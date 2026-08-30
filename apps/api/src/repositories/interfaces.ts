@@ -1,68 +1,26 @@
-/**
- * Domain Aggregate Repository Interfaces
- * Encapsulates domain logic without leaking 1:1 raw table structures.
- */
-
+/** Domain aggregate repository interfaces. */
 import { ArtifactType, ArtifactStatus, ArtifactContent, UserRole, JourneyStage, JourneyStatus, DashboardMaturityModel } from "@bta/shared";
-
 export interface WorkspaceEntity { id:string; orgId:string; name:string; description?:string|null; createdBy:string; createdAt:Date; updatedAt:Date; }
 export interface ProjectEntity { id:string; orgId:string; workspaceId:string; name:string; description?:string|null; status:"active"|"archived"; createdAt:Date; updatedAt:Date; }
 export interface ProjectMemberEntity { id:string; orgId:string; projectId:string; userId:string; role:UserRole; createdAt:Date; }
-export interface IProjectAggregateRepository {
- createWorkspace(orgId:string,data:{name:string;description?:string;createdBy:string}):Promise<WorkspaceEntity>;
- findWorkspaceById(orgId:string,id:string):Promise<WorkspaceEntity|null>; listWorkspaces(orgId:string):Promise<WorkspaceEntity[]>;
- createProject(orgId:string,workspaceId:string,data:{name:string;description?:string}):Promise<ProjectEntity>;
- findProjectById(orgId:string,id:string):Promise<ProjectEntity|null>; listProjectsByWorkspace(orgId:string,workspaceId:string):Promise<ProjectEntity[]>;
- addMember(orgId:string,projectId:string,userId:string,role:UserRole):Promise<ProjectMemberEntity>; listMembers(orgId:string,projectId:string):Promise<ProjectMemberEntity[]>;
- updateProject(orgId:string,id:string,updates:{name?:string;description?:string|null;status?:"active"|"archived"}):Promise<ProjectEntity>; deleteProject(orgId:string,id:string):Promise<void>;
-}
-
+export interface IProjectAggregateRepository { createWorkspace(orgId:string,data:{name:string;description?:string;createdBy:string}):Promise<WorkspaceEntity>; findWorkspaceById(orgId:string,id:string):Promise<WorkspaceEntity|null>; listWorkspaces(orgId:string):Promise<WorkspaceEntity[]>; createProject(orgId:string,workspaceId:string,data:{name:string;description?:string}):Promise<ProjectEntity>; findProjectById(orgId:string,id:string):Promise<ProjectEntity|null>; listProjectsByWorkspace(orgId:string,workspaceId:string):Promise<ProjectEntity[]>; addMember(orgId:string,projectId:string,userId:string,role:UserRole):Promise<ProjectMemberEntity>; listMembers(orgId:string,projectId:string):Promise<ProjectMemberEntity[]>; updateProject(orgId:string,id:string,updates:{name?:string;description?:string|null;status?:"active"|"archived"}):Promise<ProjectEntity>; deleteProject(orgId:string,id:string):Promise<void>; }
 export interface ArtifactEntity { id:string; orgId:string; projectId:string; type:ArtifactType; title:string; content:ArtifactContent; status:ArtifactStatus; version:number; parent_id?:string|null; change_reason?:string|null; createdBy?:string|null; createdAt:Date; updatedAt:Date; }
 export interface ArtifactCommentEntity { id:string; orgId:string; artifactId:string; userId:string; content:string; status:"open"|"resolved"; createdAt:Date; }
-export interface IArtifactAggregateRepository {
- create(orgId:string,projectId:string,data:{type:ArtifactType;title:string;content:ArtifactContent;status?:ArtifactStatus;createdBy?:string}):Promise<ArtifactEntity>;
- findById(orgId:string,id:string):Promise<ArtifactEntity|null>; listByProject(orgId:string,projectId:string):Promise<ArtifactEntity[]>;
- createVersion(orgId:string,id:string,updates:{content?:ArtifactContent;title?:string;change_reason?:string;createdBy?:string;status?:ArtifactStatus;expectedVersion?:number}):Promise<ArtifactEntity>;
- updateStatus(orgId:string,id:string,status:ArtifactStatus):Promise<ArtifactEntity>; addComment(orgId:string,artifactId:string,userId:string,content:string):Promise<ArtifactCommentEntity>; listComments(orgId:string,artifactId:string):Promise<ArtifactCommentEntity[]>;
-}
-
+export interface IArtifactAggregateRepository { create(orgId:string,projectId:string,data:{type:ArtifactType;title:string;content:ArtifactContent;status?:ArtifactStatus;createdBy?:string}):Promise<ArtifactEntity>; findById(orgId:string,id:string):Promise<ArtifactEntity|null>; listByProject(orgId:string,projectId:string):Promise<ArtifactEntity[]>; createVersion(orgId:string,id:string,updates:{content?:ArtifactContent;title?:string;change_reason?:string;createdBy?:string;status?:ArtifactStatus;expectedVersion?:number}):Promise<ArtifactEntity>; updateStatus(orgId:string,id:string,status:ArtifactStatus):Promise<ArtifactEntity>; addComment(orgId:string,artifactId:string,userId:string,content:string):Promise<ArtifactCommentEntity>; listComments(orgId:string,artifactId:string):Promise<ArtifactCommentEntity[]>; }
 export interface JourneyStageEntity { id:string; orgId:string; projectId:string; stage:JourneyStage; status:JourneyStatus; entered_at:Date; completed_at?:Date|null; completed_by?:string|null; blocked_reason?:string|null; stage_version:number; }
-export interface ITransformationAggregateRepository {
- getJourneyState(orgId:string,projectId:string):Promise<JourneyStageEntity[]>;
- transitionStage(orgId:string,projectId:string,stage:JourneyStage,status:JourneyStatus,userId?:string,blockedReason?:string,expectedVersion?:number):Promise<JourneyStageEntity>;
- rollbackStage?(orgId:string,projectId:string,targetStage:JourneyStage,userId:string,reason:string,expectedVersion?:number):Promise<JourneyStageEntity>;
- saveMaturitySnapshot(orgId:string,projectId:string,snapshot:DashboardMaturityModel):Promise<void>;
- getLatestMaturity(orgId:string,projectId:string):Promise<DashboardMaturityModel|null>;
-}
-
+export interface ITransformationAggregateRepository { getJourneyState(orgId:string,projectId:string):Promise<JourneyStageEntity[]>; transitionStage(orgId:string,projectId:string,stage:JourneyStage,status:JourneyStatus,userId?:string,blockedReason?:string,expectedVersion?:number):Promise<JourneyStageEntity>; rollbackStage?(orgId:string,projectId:string,targetStage:JourneyStage,userId:string,reason:string,expectedVersion?:number):Promise<JourneyStageEntity>; saveMaturitySnapshot(orgId:string,projectId:string,snapshot:DashboardMaturityModel):Promise<void>; getLatestMaturity(orgId:string,projectId:string):Promise<DashboardMaturityModel|null>; }
 export interface DocumentEntity { id:string; orgId:string; projectId:string; filename:string; doc_type:string; file_size:number; parsedStatus:"pending"|"parsed"|"failed"; storage_key?:string|null; createdAt:Date; updatedAt:Date; }
 export interface DocumentChunkEntity { id:string; orgId:string; documentId:string; chunk_index:number; content:string; page_number?:number|null; embedding?:number[]|null; createdAt:Date; }
-export interface IDocumentAggregateRepository {
- createDocument(orgId:string,projectId:string,data:{filename:string;docType:string;fileSize:number;storageKey?:string}):Promise<DocumentEntity>;
- findDocumentById(orgId:string,id:string):Promise<DocumentEntity|null>; listDocumentsByProject(orgId:string,projectId:string):Promise<DocumentEntity[]>;
- updateParsedStatus(orgId:string,id:string,status:"pending"|"parsed"|"failed"):Promise<DocumentEntity>;
- addChunks(orgId:string,documentId:string,chunks:Array<{chunkIndex:number;content:string;pageNumber?:number;embedding?:number[]}>):Promise<DocumentChunkEntity[]>;
- searchSimilarChunks(orgId:string,projectId:string,queryEmbedding:number[],topK:number):Promise<Array<DocumentChunkEntity&{score:number}>>;
-}
-
+export interface IDocumentAggregateRepository { createDocument(orgId:string,projectId:string,data:{filename:string;docType:string;fileSize:number;storageKey?:string;uploadedBy?:string}):Promise<DocumentEntity>; findDocumentById(orgId:string,id:string):Promise<DocumentEntity|null>; listDocumentsByProject(orgId:string,projectId:string):Promise<DocumentEntity[]>; updateParsedStatus(orgId:string,id:string,status:"pending"|"parsed"|"failed"):Promise<DocumentEntity>; addChunks(orgId:string,documentId:string,chunks:Array<{chunkIndex:number;content:string;pageNumber?:number;embedding?:number[]}>):Promise<DocumentChunkEntity[]>; searchSimilarChunks(orgId:string,projectId:string,queryEmbedding:number[],topK:number):Promise<Array<DocumentChunkEntity&{score:number}>>; }
+export interface ConversationEntity { id:string; orgId:string; projectId:string; startedBy:string; createdAt:Date; }
+export interface ConversationMessageEntity { id:string; orgId:string; conversationId:string; role:"user"|"ai"; content:string; createdAt:Date; }
+export interface IConversationAggregateRepository { create(orgId:string,projectId:string,startedBy:string):Promise<ConversationEntity>; findById(orgId:string,id:string):Promise<ConversationEntity|null>; listByProject(orgId:string,projectId:string):Promise<ConversationEntity[]>; addMessage(orgId:string,conversationId:string,role:"user"|"ai",content:string):Promise<ConversationMessageEntity>; listMessages(orgId:string,conversationId:string):Promise<ConversationMessageEntity[]>; }
 export interface ArtifactApprovalEntity { id:string; orgId:string; artifactId:string; userId:string; status:"approved"|"rejected"|"changes_requested"; comment?:string|null; createdAt:Date; }
 export interface NotificationEntity { id:string; orgId:string; userId:string; title:string; body:string; read:boolean; createdAt:Date; }
-export interface ICollaborationAggregateRepository {
- recordApproval(orgId:string,artifactId:string,userId:string,status:"approved"|"rejected"|"changes_requested",comment?:string):Promise<ArtifactApprovalEntity>;
- listApprovals(orgId:string,artifactId:string):Promise<ArtifactApprovalEntity[]>;
- createNotification(orgId:string,userId:string,title:string,body:string):Promise<NotificationEntity>; listNotifications(orgId:string,userId:string):Promise<NotificationEntity[]>; markNotificationRead(orgId:string,id:string):Promise<NotificationEntity>;
-}
-
+export interface ICollaborationAggregateRepository { recordApproval(orgId:string,artifactId:string,userId:string,status:"approved"|"rejected"|"changes_requested",comment?:string):Promise<ArtifactApprovalEntity>; listApprovals(orgId:string,artifactId:string):Promise<ArtifactApprovalEntity[]>; createNotification(orgId:string,userId:string,title:string,body:string):Promise<NotificationEntity>; listNotifications(orgId:string,userId:string):Promise<NotificationEntity[]>; markNotificationRead(orgId:string,id:string):Promise<NotificationEntity>; }
 export interface WebhookConfigEntity { id:string; orgId:string; workspaceId:string; url:string; events:string[]; secret?:string|null; createdAt:Date; }
 export interface OutboxEventEntity { id:string; orgId:string; event_type:string; aggregate_id:string; payload:Record<string,unknown>; status:"pending"|"delivered"|"failed"|"dead_letter"; attempt_count:number; next_retry_at?:Date|null; last_error?:string|null; createdAt:Date; }
-export interface IWebhookAggregateRepository {
- createConfig(orgId:string,workspaceId:string,data:{url:string;events:string[];secret?:string}):Promise<WebhookConfigEntity>; listConfigs(orgId:string,workspaceId:string):Promise<WebhookConfigEntity[]>; findConfigById(orgId:string,id:string):Promise<WebhookConfigEntity|null>;
- queueOutboxEvent(orgId:string,eventType:string,aggregateId:string,payload:Record<string,unknown>):Promise<OutboxEventEntity>; listPendingOutboxEvents(limit?:number):Promise<OutboxEventEntity[]>; markOutboxEventResult(id:string,status:"delivered"|"failed"|"dead_letter",error?:string):Promise<void>;
-}
-
+export interface IWebhookAggregateRepository { createConfig(orgId:string,workspaceId:string,data:{url:string;events:string[];secret?:string}):Promise<WebhookConfigEntity>; listConfigs(orgId:string,workspaceId:string):Promise<WebhookConfigEntity[]>; findConfigById(orgId:string,id:string):Promise<WebhookConfigEntity|null>; queueOutboxEvent(orgId:string,eventType:string,aggregateId:string,payload:Record<string,unknown>):Promise<OutboxEventEntity>; listPendingOutboxEvents(limit?:number):Promise<OutboxEventEntity[]>; markOutboxEventResult(id:string,status:"delivered"|"failed"|"dead_letter",error?:string):Promise<void>; }
 export interface AuditLogEntity { id:string; orgId:string; actorId:string; action:string; resource_type:string; resource_id:string; details:Record<string,unknown>; createdAt:Date; }
 export interface AIModelConfigEntity { id:string; orgId:string; module:string; provider:string; model:string; temperature:number; max_tokens:number; enabled:boolean; createdAt:Date; }
-export interface IGovernanceAggregateRepository {
- recordAuditLog(orgId:string,actorId:string,action:string,resourceType:string,resourceId:string,details:Record<string,unknown>):Promise<AuditLogEntity>; listAuditLogs(orgId:string,limit?:number):Promise<AuditLogEntity[]>;
- setAIModelConfig(orgId:string,module:string,config:{provider:string;model:string;temperature:number;max_tokens:number;enabled:boolean}):Promise<AIModelConfigEntity>; getAIModelConfig(orgId:string,module:string):Promise<AIModelConfigEntity|null>;
-}
+export interface IGovernanceAggregateRepository { recordAuditLog(orgId:string,actorId:string,action:string,resourceType:string,resourceId:string,details:Record<string,unknown>):Promise<AuditLogEntity>; listAuditLogs(orgId:string,limit?:number):Promise<AuditLogEntity[]>; setAIModelConfig(orgId:string,module:string,config:{provider:string;model:string;temperature:number;max_tokens:number;enabled:boolean}):Promise<AIModelConfigEntity>; getAIModelConfig(orgId:string,module:string):Promise<AIModelConfigEntity|null>; }
