@@ -12,19 +12,105 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum OrgPlan { trial standard enterprise }
-enum UserRole { org_admin workspace_admin contributor reviewer viewer }
-enum ProjectStatus { active archived }
-enum ProjectMemberRole { owner contributor reviewer viewer }
-enum DocumentType { pdf pptx docx sop brd other }
-enum ParsedStatus { pending parsed failed }
-enum MessageRole { user ai }
-enum ArtifactType { recommendation business_analysis architecture_hld architecture_lld process_workflow bpmn_diagram wireframe er_diagram api_spec roadmap effort_estimate dashboard_snapshot }
-enum ArtifactStatus { draft in_review approved }
-enum GeneratedBy { ai user hybrid }
-enum ApprovalDecision { approved rejected changes_requested }
-enum RiskLevel { low medium high }
-enum JourneyStage { idea discovery business_analysis solution_design architecture process_design ux_design data_design planning review approved implementation }
+enum OrgPlan {
+  trial
+  standard
+  enterprise
+}
+
+enum UserRole {
+  org_admin
+  workspace_admin
+  contributor
+  reviewer
+  viewer
+}
+
+enum ProjectStatus {
+  active
+  archived
+}
+
+enum ProjectMemberRole {
+  owner
+  contributor
+  reviewer
+  viewer
+}
+
+enum DocumentType {
+  pdf
+  pptx
+  docx
+  sop
+  brd
+  other
+}
+
+enum ParsedStatus {
+  pending
+  parsed
+  failed
+}
+
+enum MessageRole {
+  user
+  ai
+}
+
+enum ArtifactType {
+  recommendation
+  business_analysis
+  architecture_hld
+  architecture_lld
+  process_workflow
+  bpmn_diagram
+  wireframe
+  er_diagram
+  api_spec
+  roadmap
+  effort_estimate
+  dashboard_snapshot
+}
+
+enum ArtifactStatus {
+  draft
+  in_review
+  approved
+}
+
+enum GeneratedBy {
+  ai
+  user
+  hybrid
+}
+
+enum ApprovalDecision {
+  approved
+  rejected
+  changes_requested
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+}
+
+enum JourneyStage {
+  idea
+  discovery
+  business_analysis
+  solution_design
+  architecture
+  process_design
+  ux_design
+  data_design
+  planning
+  review
+  approved
+  implementation
+}
 
 model Organization {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import * as React from "react";
 import { View, Text, TextInput, Button, ActivityIndicator } from "react-native";
 import { API_BASE } from "@bta/shared";

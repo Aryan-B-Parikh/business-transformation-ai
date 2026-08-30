@@ -1,0 +1,85 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: ankane/pgvector:v0.5.1
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=bta_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bta_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    networks:
+      - default
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    networks:
+      - default
+
+  minio-create-bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc config host add myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/bta-storage-test || true;
+      /usr/bin/mc anonymous set public myminio/bta-storage-test;
+      exit 0;
+      "
+    networks:
+      - default
+
+  parser-sandbox:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.parser
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=production
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=100m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 50
+    mem_limit: 256m
+    cpus: 0.5
+    networks:
+      - sandbox_net
+
+networks:
+  default:
+    name: bta_test_net
+  sandbox_net:
+    internal: true # No internet access for the sandbox
+
+volumes:
+  minio_data:

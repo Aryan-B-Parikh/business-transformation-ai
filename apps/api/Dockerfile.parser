@@ -1,0 +1,29 @@
+FROM node:20-alpine
+
+# Use an unprivileged user
+RUN addgroup -S sandboxgroup && adduser -S sandboxuser -G sandboxgroup
+
+WORKDIR /app
+
+# Install dependencies (only production to minimize attack surface)
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Copy sandbox code
+COPY src/parser-sandbox src/parser-sandbox
+COPY tsconfig.json ./
+
+# Compile sandbox
+RUN npm install -g typescript && tsc -p tsconfig.json
+
+# Change ownership
+RUN chown -R sandboxuser:sandboxgroup /app
+
+USER sandboxuser
+
+# Read-only filesystem is enforced via Docker run, so we can't write to /app
+# We can only write to /tmp (if mapped as tmpfs)
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["node", "dist/parser-sandbox/index.js"]

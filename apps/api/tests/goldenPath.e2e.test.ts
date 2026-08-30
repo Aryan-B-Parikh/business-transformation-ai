@@ -34,7 +34,7 @@ describe("Golden Path E2E (Phase 29)", () => {
     const docRes = await request(app)
       .post(`/api/v1/projects/${projectId}/documents`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ filename: "e2e.pdf", docType: "requirements", fileSize: 1024 });
+      .attach("file", Buffer.from("%PDF-1.4 mock content"), { filename: "e2e.pdf", contentType: "application/pdf" });
     expect(docRes.status).toBe(201);
 
     // 4. Artifact Generation
