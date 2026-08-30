@@ -2,7 +2,7 @@
 // Covers all tables from 03_DATA_MODEL.md with RLS-friendly org_id scoping
 // Vector embeddings use pgvector (see migration SQL for extension)
 
- generator client {
+generator client {
   provider        = "prisma-client-js"
   previewFeatures = []
 }
@@ -283,13 +283,30 @@ model JourneyTransition {
   fromStage JourneyStage? @map("from_stage")
   toStage JourneyStage @map("to_stage")
   actor String @db.Uuid
-  reason String? @db.Text
-  version Int
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  reason String?
+  revision Int
+  timestamp DateTime @default(now()) @db.Timestamptz
   journey TransformationJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
   @@index([orgId])
   @@index([journeyId])
   @@map("journey_transitions")
+}
+model AuditLog {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  action String
+  targetType String @map("target_type")
+  targetId String @map("target_id") @db.Uuid
+  metadata Json? @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  ipAddress String? @map("ip_address")
+  requestId String? @map("request_id")
+  actor User @relation("AuditActor", fields: [actorId], references: [id])
+  @@index([orgId])
+  @@index([actorId])
+  @@index([action])
+  @@map("audit_logs")
 }
 model RefreshToken {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -298,25 +315,24 @@ model RefreshToken {
   tokenHash String @unique @map("token_hash")
   expiresAt DateTime @map("expires_at") @db.Timestamptz
   revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  userAgent String? @map("user_agent")
+  ipAddress String? @map("ip_address")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([orgId])
   @@index([userId])
   @@map("refresh_tokens")
 }
-model AuditLog {
+model AiModelConfig {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId String @map("org_id") @db.Uuid
-  actorId String @map("actor_id") @db.Uuid
-  action String
-  entityType String @map("entity_type")
-  entityId String @map("entity_id") @db.Uuid
-  metadata Json @db.JsonB
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  actor User @relation("AuditActor", fields: [actorId], references: [id])
+  module String
+  provider String
+  modelName String @map("model_name")
+  enabled Boolean @default(true)
+  @@unique([orgId, module])
   @@index([orgId])
-  @@index([entityType, entityId])
-  @@map("audit_logs")
+  @@map("ai_model_configs")
 }
 model Notification {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
