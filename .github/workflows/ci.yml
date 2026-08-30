@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: npm install --no-audit --no-fund
-      - run: npx vitest run -c apps/api/vitest.unit.config.ts
+      - run: cd apps/api && npx vitest run -c vitest.unit.config.ts
 
   test-e2e:
     name: E2E, RLS & Migration Verification
