@@ -50,7 +50,7 @@ describe("Phase 33 - RAG Benchmark and Cost E2E", () => {
       for (const c of chunks) {
         const vector = embed(c.chunkText);
         await tx.$executeRawUnsafe(
-          `INSERT INTO "document_chunks" (id, "document_id", "org_id", "chunk_text", "page_ref", embedding) VALUES ($1, $2, $3, $4, $5, $6::vector)`,
+          `INSERT INTO "document_chunks" (id, "document_id", "org_id", "chunk_text", "page_ref", embedding) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::vector)`,
           c.id, documentId, orgId, c.chunkText, c.pageRef, `[${vector.join(",")}]`,
         );
       }
@@ -62,8 +62,8 @@ describe("Phase 33 - RAG Benchmark and Cost E2E", () => {
         `SELECT dc.id, dc."chunk_text" AS "chunkText", 1 - (dc.embedding <=> $1::vector) AS score
          FROM "document_chunks" dc
          INNER JOIN "documents" d ON d.id = dc."document_id"
-         WHERE d."project_id" = $2
-           AND dc."org_id" = $3
+         WHERE d."project_id" = $2::uuid
+           AND dc."org_id" = $3::uuid
          ORDER BY dc.embedding <=> $1::vector
          LIMIT $4`,
         `[${queryVec.join(",")}]`, projId, orgId, 1,
