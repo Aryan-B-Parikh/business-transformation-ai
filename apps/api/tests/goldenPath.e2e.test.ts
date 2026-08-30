@@ -3,6 +3,7 @@ import request from "supertest";
 import { PrismaClient } from "@prisma/client";
 import { createApp } from "../src/app";
 import { generateToken } from "../src/auth/jwt";
+import { withTenant } from "../src/db/tenant";
 
 describe("Golden Path E2E (Phase 29)", () => {
   const app = createApp();
@@ -14,15 +15,28 @@ describe("Golden Path E2E (Phase 29)", () => {
   beforeAll(async () => {
     if (process.env.DATABASE_URL) {
       prisma = new PrismaClient();
+
+      // Organizations are not tenant-scoped. Tenant-owned rows must be created
+      // through the same transaction-local RLS context used by production code.
       await prisma.organization.upsert({
         where: { id: orgId },
         update: {},
         create: { id: orgId, name: "E2E Org", plan: "trial" }
       });
-      await prisma.user.upsert({
-        where: { id: userId },
-        update: {},
-        create: { id: userId, orgId, name: "E2E User", email: "e2e@example.com", role: "org_admin" }
+
+      await withTenant(prisma, orgId, async (tx) => {
+        const db = tx as PrismaClient;
+        await db.user.upsert({
+          where: { id: userId },
+          update: {},
+          create: {
+            id: userId,
+            orgId,
+            name: "E2E User",
+            email: "e2e@example.com",
+            role: "org_admin"
+          }
+        });
       });
     }
   });
