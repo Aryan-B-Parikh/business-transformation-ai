@@ -44,13 +44,15 @@ services:
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc config host add myminio http://minio:9000 minioadmin minioadmin;
-      /usr/bin/mc mb myminio/bta-storage-test || true;
-      /usr/bin/mc anonymous set public myminio/bta-storage-test;
-      exit 0;
-      "
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin
+        /usr/bin/mc mb --ignore-existing myminio/bta-storage-test
+        /usr/bin/mc anonymous set none myminio/bta-storage-test
+        /usr/bin/mc stat myminio/bta-storage-test
     networks:
       - default
 
@@ -80,7 +82,7 @@ networks:
   default:
     name: bta_test_net
   sandbox_net:
-    internal: true # No internet access for the sandbox
+    internal: true
 
 volumes:
   minio_data:
