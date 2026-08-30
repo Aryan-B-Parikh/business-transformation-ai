@@ -22,7 +22,7 @@ describe("Phase 33 - RAG Benchmark and Cost E2E", () => {
   it("should retrieve chunks via pgvector correctly (Recall@K / Precision@K)", async () => {
     if (!dbUrl) return;
     const orgId = "44444444-4444-4444-4444-444444444444";
-    const projId = "proj-rag-e2e";
+    const projId = "00000000-0000-0000-0000-000000000004";
     
     await withTenant(prisma, orgId, async (tx) => {
       // Setup
@@ -33,14 +33,14 @@ describe("Phase 33 - RAG Benchmark and Cost E2E", () => {
         data: { id: projId, orgId, workspaceId: orgId, name: "RAG Proj" }
       });
       await tx.document.create({
-        data: { id: "doc-rag-1", projectId: projId, orgId, filename: "test.pdf", storageUrl: "s3://1", type: "pdf", status: "completed", fileId: "f1", parsedStatus: "completed" }
+        data: { id: "00000000-0000-0000-0000-000000000005", projectId: projId, orgId, filename: "test.pdf", storageUrl: "s3://1", type: "pdf", status: "completed", fileId: "f1", parsedStatus: "completed" }
       });
 
       // Insert vectors
       const chunks = [
-        { id: "c1", documentId: "doc-rag-1", orgId, chunkText: "cloud migration strategy", pageRef: 1 },
-        { id: "c2", documentId: "doc-rag-1", orgId, chunkText: "cooking recipes for chicken", pageRef: 1 },
-        { id: "c3", documentId: "doc-rag-1", orgId, chunkText: "financial forecasting in excel", pageRef: 1 },
+        { id: "00000000-0000-0000-0000-000000000011", documentId: "00000000-0000-0000-0000-000000000005", orgId, chunkText: "cloud migration strategy", pageRef: 1 },
+        { id: "00000000-0000-0000-0000-000000000012", documentId: "00000000-0000-0000-0000-000000000005", orgId, chunkText: "cooking recipes for chicken", pageRef: 1 },
+        { id: "00000000-0000-0000-0000-000000000013", documentId: "00000000-0000-0000-0000-000000000005", orgId, chunkText: "financial forecasting in excel", pageRef: 1 },
       ];
 
       for (const c of chunks) {

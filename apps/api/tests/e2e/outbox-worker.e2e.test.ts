@@ -29,7 +29,7 @@ describe("Phase 33 - Transactional Outbox and Worker E2E", () => {
       await tx.workspace.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, orgId, name: "WS", createdBy: orgId } });
       await tx.project.create({
         data: {
-          id: "proj-outbox-test",
+          id: "00000000-0000-0000-0000-000000000006",
           orgId,
           workspaceId: orgId,
           name: "Outbox Project",

@@ -42,7 +42,7 @@ describe("Phase 33 - RLS Attack and Privilege Verification", () => {
       await tx.workspace.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, orgId, name: "WS", createdBy: orgId } });
       await tx.project.create({
         data: {
-          id: "proj-rls-attack",
+          id: "00000000-0000-0000-0000-000000000001",
           orgId,
           workspaceId: orgId,
           name: "Secret Project",
@@ -66,7 +66,7 @@ describe("Phase 33 - RLS Attack and Privilege Verification", () => {
       await tx.user.upsert({ where: { id: orgA }, update: {}, create: { id: orgA, orgId: orgA, name: "User", email: `${orgA}@example.com`, role: "org_admin" } });
       await tx.workspace.upsert({ where: { id: orgA }, update: {}, create: { id: orgA, orgId: orgA, name: "WS", createdBy: orgA } });
       await tx.project.create({
-        data: { id: "proj-a", orgId: orgA, workspaceId: orgA, name: "Project A" }
+        data: { id: "00000000-0000-0000-0000-000000000002", orgId: orgA, workspaceId: orgA, name: "Project A" }
       });
     });
 
@@ -76,7 +76,7 @@ describe("Phase 33 - RLS Attack and Privilege Verification", () => {
       await tx.user.upsert({ where: { id: orgB }, update: {}, create: { id: orgB, orgId: orgB, name: "User", email: `${orgB}@example.com`, role: "org_admin" } });
       await tx.workspace.upsert({ where: { id: orgB }, update: {}, create: { id: orgB, orgId: orgB, name: "WS", createdBy: orgB } });
       await tx.project.create({
-        data: { id: "proj-b", orgId: orgB, workspaceId: orgB, name: "Project B" }
+        data: { id: "00000000-0000-0000-0000-000000000003", orgId: orgB, workspaceId: orgB, name: "Project B" }
       });
     });
 
