@@ -11,7 +11,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/plain"]);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE }, fileFilter: (_req, file, cb) => cb(null, ALLOWED.has(file.mimetype)) });
 function error(res: Response, status: number, code: string, message: string) { return res.status(status).json({ error: { code, message } }); }
-function fileType(filename: string) { const ext = filename.toLowerCase().split(".").pop(); return ext === "pdf" || ext === "docx" || ext === "pptx" || ext === "txt" ? ext : "other"; }
+function fileType(filename: string) { const ext = filename.toLowerCase().split(".").pop(); return ext === "pdf" || ext === "docx" || ext === "pptx" ? ext : "other"; }
 
 router.post("/projects/:id/documents", authenticate, authorize("org_admin", "workspace_admin", "contributor"), upload.single("file"), async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId, projectId = String(req.params.id);
@@ -19,10 +19,7 @@ router.post("/projects/:id/documents", authenticate, authorize("org_admin", "wor
   const file = req.file; if (!file) return error(res, 400, "BAD_REQUEST", "A supported file is required");
   const filename = file.originalname || "document";
   const stored = await storeFile(orgId, file.buffer, filename, file.mimetype);
-  const doc = await getRepositories().documents.createDocument(orgId, projectId, {
-    filename, docType: fileType(filename), fileSize: file.size, storageKey: stored.storageUrl,
-    ...( { uploadedBy: req.user!.userId } as Record<string, unknown> ),
-  } as any);
+  const doc = await getRepositories().documents.createDocument(orgId, projectId, { filename, docType: fileType(filename), fileSize: file.size, storageKey: stored.storageUrl, ...( { uploadedBy: req.user!.userId } as Record<string, unknown> ) } as any);
   const run = async () => {
     try {
       const chunks = await processDocument({ documentId: doc.id, orgId, buffer: file.buffer, filename });
