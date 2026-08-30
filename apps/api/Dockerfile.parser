@@ -6,8 +6,8 @@ RUN addgroup -S sandboxgroup && adduser -S sandboxuser -G sandboxgroup
 WORKDIR /app
 
 # Install dependencies (only production to minimize attack surface)
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY package.json ./
+RUN npm install --omit=dev
 
 # Copy sandbox code
 COPY src/parser-sandbox src/parser-sandbox
