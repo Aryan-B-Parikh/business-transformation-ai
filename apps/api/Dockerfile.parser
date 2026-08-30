@@ -5,9 +5,7 @@ RUN addgroup -S sandboxgroup && adduser -S sandboxuser -G sandboxgroup
 
 WORKDIR /app
 
-# Install dependencies (only production to minimize attack surface)
-COPY package.json ./
-RUN npm install --omit=dev
+RUN npm init -y && npm install express multer pdf-parse mammoth && npm install --save-dev typescript @types/node @types/express @types/multer
 
 # Copy sandbox code
 COPY src/parser-sandbox src/parser-sandbox
