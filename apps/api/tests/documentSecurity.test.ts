@@ -39,6 +39,11 @@ describe("Phase 6: Document Processing Security", () => {
     // 500,001 characters of printable text
     const textBuffer = Buffer.from("a".repeat(500001));
 
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ content: "a".repeat(500001) })
+    }) as any;
+
     await expect(
       processDocument({
         documentId,

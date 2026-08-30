@@ -11,7 +11,7 @@ export async function generateStructuredCompletion<T>(systemInstruction: string,
   detectPromptInjection(userPrompt); detectSSRFInInput(userPrompt);
   const systemPrompt = buildSystemPrompt(systemInstruction, schema);
   const start = Date.now();
-  let invocation = await invokeLLM(systemPrompt, userPrompt, config);
+  let invocation = await Internal.invokeLLM(systemPrompt, userPrompt, config);
   let lastError: unknown;
   for (let attempt = 0; attempt <= 2; attempt++) {
     try {
@@ -27,13 +27,14 @@ export async function generateStructuredCompletion<T>(systemInstruction: string,
       lastError = err;
       if (attempt === 2) break;
       const repairPrompt = `Return ONLY valid JSON matching the required schema. Repair the following invalid model output. Do not add commentary. Validation error: ${String((err as Error)?.message || err)}\nINVALID OUTPUT:\n${invocation.content}`;
-      invocation = await invokeLLM(systemPrompt, repairPrompt, { ...config, temperature: 0 });
+      invocation = await Internal.invokeLLM(systemPrompt, repairPrompt, { ...config, temperature: 0 });
     }
   }
   throw new AIValidationError(`Failed to validate LLM output after bounded repair attempts: ${String((lastError as Error)?.message || lastError)}`);
 }
 
-export async function invokeLLM(systemPrompt: string, userPrompt: string, config: LLMConfig): Promise<Invocation> {
+export const Internal = {
+  async invokeLLM(systemPrompt: string, userPrompt: string, config: LLMConfig): Promise<Invocation> {
   const model = config.model || "gpt-4o-mini";
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -61,3 +62,4 @@ export async function invokeLLM(systemPrompt: string, userPrompt: string, config
     throw err;
   } finally { clearTimeout(timeout); }
 }
+};

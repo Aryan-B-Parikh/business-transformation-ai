@@ -323,7 +323,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
 export class PostgresTransformationRepository implements ITransformationAggregateRepository {
   constructor(private prisma: PrismaClientType) {}
 
-  async getJourneyState(orgId: string, projectId: string): Promise<JourneyStageEntity[]> {
+  async getJourneyState(orgId: string, _projectId: string): Promise<JourneyStageEntity[]> {
     assertTenant(orgId);
     return [];
   }
@@ -541,7 +541,7 @@ export class PostgresWebhookRepository implements IWebhookAggregateRepository {
     };
   }
 
-  async listConfigs(orgId: string, workspaceId: string): Promise<WebhookConfigEntity[]> {
+  async listConfigs(orgId: string, _workspaceId: string): Promise<WebhookConfigEntity[]> {
     assertTenant(orgId);
     return [];
   }

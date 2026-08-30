@@ -40,6 +40,7 @@ services:
 
   minio-create-bucket:
     image: minio/mc:latest
+    profiles: ["setup"]
     depends_on:
       minio:
         condition: service_healthy

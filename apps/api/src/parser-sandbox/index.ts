@@ -3,7 +3,8 @@ import mammoth from "mammoth";
 import multer from "multer";
 import os from "os";
 // @ts-ignore
-const pdfParse = require("pdf-parse");
+import * as pdfParseModule from "pdf-parse";
+const pdfParse: any = (pdfParseModule as any).default || pdfParseModule;
 
 const app = express();
 const upload = multer({ 
