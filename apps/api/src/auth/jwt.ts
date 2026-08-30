@@ -53,7 +53,7 @@ export function signToken(payload: Omit<JwtPayload, "iat" | "exp">, expiresIn?: 
  */
 export function verifyToken(token: string): JwtPayload {
   try {
-    const decodedUnverified = jwt.decode(token, { complete: true }) as { header: JwtHeader; payload: JwtPayload };
+    const decodedUnverified = jwt.decode(token, { complete: true }) as unknown as { header: JwtHeader; payload: JwtPayload };
     if (!decodedUnverified || !decodedUnverified.header || !decodedUnverified.header.kid) {
       throw new Error("Invalid token: missing kid");
     }

@@ -1,9 +1,8 @@
 import { getRepositories } from "../repositories";
-import { getArtifact } from "../stores/artifacts";
 import { ArtifactStatus } from "@bta/shared";
 
 export async function requestReview(orgId: string, artifactId: string, actorId: string) {
-  const art = getArtifact(artifactId);
+  const art = await getRepositories().artifacts.findById(orgId, artifactId);
   if (!art || art.orgId !== orgId) {
     throw new Error("Artifact not found");
   }
@@ -26,7 +25,7 @@ export async function submitDecision(
   decision: "approved" | "rejected" | "changes_requested",
   comment?: string
 ) {
-  const art = getArtifact(artifactId);
+  const art = await getRepositories().artifacts.findById(orgId, artifactId);
   if (!art || art.orgId !== orgId) {
     throw new Error("Artifact not found");
   }

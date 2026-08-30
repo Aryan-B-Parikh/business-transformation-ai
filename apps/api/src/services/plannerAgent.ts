@@ -1,11 +1,14 @@
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
+import { getRepositories } from "../repositories";
 /**
  * Transformation Planner agent — TASK-020
  * POST /ai/v1/planning/generate-roadmap → roadmap artifact + roadmap_items rows
  * DoD: Roadmap items have valid phase/date/dependency data; no circular dependencies (validated)
  */
 
-import { createArtifact } from "../stores/artifacts";
-import { createRoadmapItem } from "../stores/roadmapItems";
+
+
 
 export interface RoadmapContent {
   phases: { name: string; durationWeeks: number; dependencies: string[] }[];
@@ -20,7 +23,7 @@ export interface PlannerRequest {
   params?: { horizonMonths?: number };
 }
 
-export function generateRoadmap(req: PlannerRequest): { artifactId: string; content: RoadmapContent; roadmapItemIds: string[] } {
+export async function generateRoadmap(req: PlannerRequest): Promise<{ artifactId: string; content: RoadmapContent; roadmapItemIds: string[] }> {
   if (!req.projectId || !req.orgId) throw new Error("projectId and orgId required");
   const horizon = req.params?.horizonMonths || 6;
   const now = new Date();
@@ -45,16 +48,11 @@ export function generateRoadmap(req: PlannerRequest): { artifactId: string; cont
     },
   };
 
-  const artifact = createArtifact({
-    projectId: req.projectId,
-    orgId: req.orgId,
+  const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: "roadmap",
     title: `Transformation Roadmap — ${horizon} months`,
     status: "draft",
     content: content as unknown as Record<string, unknown>,
-    diagramUrl: null,
-    parentArtifactId: null,
-    generatedBy: "ai",
     createdBy: req.createdBy,
   });
 
@@ -67,7 +65,7 @@ export function generateRoadmap(req: PlannerRequest): { artifactId: string; cont
     const end = new Date(cursor);
     end.setDate(end.getDate() + p.durationWeeks * 7 - 1);
     const deps = p.dependencies.map((d) => phaseToId.get(d)!).filter(Boolean);
-    const item = createRoadmapItem({
+    const item = await prisma.roadmapItem.create({ data: {
       artifactId: artifact.id,
       orgId: req.orgId,
       title: p.name,
@@ -75,7 +73,7 @@ export function generateRoadmap(req: PlannerRequest): { artifactId: string; cont
       startEstimate: start.toISOString().slice(0, 10),
       endEstimate: end.toISOString().slice(0, 10),
       dependencies: deps,
-    });
+    } });
     phaseToId.set(p.name, item.id);
     itemIds.push(item.id);
     cursor = new Date(end);

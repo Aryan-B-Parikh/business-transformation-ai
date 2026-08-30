@@ -1,10 +1,11 @@
+import { getRepositories } from "../repositories";
 /**
  * Process Intelligence Designer agent — TASK-015
  * POST /ai/v1/process/generate-workflow → BPMN/workflow artifact
  * DoD: Output validates against BPMN JSON schema; renders via TASK-018
  */
 
-import { createArtifact } from "../stores/artifacts";
+
 
 export interface ProcessContent {
   bpmnJson: { lanes: { id: string; name: string }[]; nodes: { id: string; type: string; name: string; lane: string }[]; flows: { id: string; from: string; to: string }[] };
@@ -21,7 +22,7 @@ export interface ProcessRequest {
   params?: { processName?: string };
 }
 
-export function generateProcess(req: ProcessRequest): { artifactId: string; content: ProcessContent } {
+export async function generateProcess(req: ProcessRequest): Promise<{ artifactId: string; content: ProcessContent }> {
   const name = req.params?.processName || "Order to Cash";
   const bpmnJson = {
     lanes: [
@@ -57,16 +58,11 @@ export function generateProcess(req: ProcessRequest): { artifactId: string; cont
     diagramSpec,
   };
 
-  const artifact = createArtifact({
-    projectId: req.projectId,
-    orgId: req.orgId,
+  const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: "process_workflow",
     title: `Process — ${name}`,
     status: "draft",
     content: content as unknown as Record<string, unknown>,
-    diagramUrl: null,
-    parentArtifactId: null,
-    generatedBy: "ai",
     createdBy: req.createdBy,
   });
 

@@ -21,9 +21,9 @@ import { generateEstimation, validateEstimationContent } from "../services/estim
 import { generateRoadmap, validateRoadmapContent } from "../services/plannerAgent";
 import { generateProcess, validateBpmnJson } from "../services/processAgent";
 import { generateUx, validateUx } from "../services/uxAgent";
-import { getConversation, getMessages } from "../stores/conversations";
-import { getDocIdsForProject } from "../stores/documents";
+import { PrismaClient } from "@prisma/client";
 
+const prisma = new PrismaClient();
 
 const router = Router();
 
@@ -37,14 +37,16 @@ router.post("/ai/v1/discovery/ask", authenticate, async (req: AuthedRequest, res
 
   // If conversationId provided, load history from store
   if (body.conversationId) {
-    const conv = getConversation(String(body.conversationId));
+    const conv = await prisma.conversation.findUnique({ where: { id: String(body.conversationId) } });
     if (conv && conv.orgId === orgId) {
-      history = getMessages(conv.id, orgId).map((m) => ({ role: m.role, content: m.content }));
+      const messages = await prisma.conversationMessage.findMany({ where: { conversationId: conv.id }, orderBy: { createdAt: "asc" } });
+      history = messages.map((m) => ({ role: m.role, content: m.content }));
       projectId = conv.projectId;
-      const docIds = getDocIdsForProject(projectId!);
-      if (docIds.size > 0) {
-        const chunks = getChunksByProject(projectId!, orgId, docIds);
-        ragContext = chunks.slice(0, 3).map((c) => c.chunkText);
+      
+      const docIds = (await prisma.document.findMany({ where: { projectId: projectId! }, select: { id: true } })).map((d: any) => d.id);
+      if (docIds.length > 0) {
+        const chunks = await prisma.documentChunk.findMany({ where: { documentId: { in: docIds } }});
+        ragContext = chunks.slice(0, 3).map((c: any) => c.chunkText);
       }
     }
   } else if (body.query) {
@@ -54,10 +56,10 @@ router.post("/ai/v1/discovery/ask", authenticate, async (req: AuthedRequest, res
 
   // If projectId provided, attach RAG
   if (projectId && !ragContext) {
-    const docIds = getDocIdsForProject(projectId);
-    if (docIds.size > 0) {
-      const chunks = getChunksByProject(projectId, orgId, docIds);
-      ragContext = chunks.slice(0, 3).map((c) => c.chunkText);
+    const docIds = (await prisma.document.findMany({ where: { projectId }, select: { id: true } })).map((d: any) => d.id);
+    if (docIds.length > 0) {
+      const chunks = await prisma.documentChunk.findMany({ where: { documentId: { in: docIds } }});
+      ragContext = chunks.slice(0, 3).map((c: any) => c.chunkText);
     }
   }
 
@@ -84,20 +86,21 @@ router.post("/ai/v1/business-analysis/generate", authenticate, async (req: Authe
 
   let conversationHistory: { role: string; content: string }[] | undefined;
   if (body.conversationId) {
-    const conv = getConversation(String(body.conversationId));
-    if (conv && conv.orgId === orgId) conversationHistory = getMessages(conv.id, orgId).map((m) => ({ role: m.role, content: m.content }));
+    const conv = await prisma.conversation.findUnique({ where: { id: String(body.conversationId) } });
+    if (conv && conv.orgId === orgId) {
+      const messages = await prisma.conversationMessage.findMany({ where: { conversationId: conv.id }, orderBy: { createdAt: "asc" } });
+      conversationHistory = messages.map((m) => ({ role: m.role, content: m.content }));
+    }
   }
 
   let documentExcerpts: string[] | undefined;
   if (body.documentIds && Array.isArray(body.documentIds)) {
-    // Collect excerpts from chunks for those docs
-    const docIds = getDocIdsForProject(projectId);
-    const chunks = getChunksByProject(projectId, orgId, docIds).filter((c) => body.documentIds!.includes(c.documentId));
-    documentExcerpts = chunks.slice(0, 5).map((c) => c.chunkText);
+    const docIds = (await prisma.document.findMany({ where: { projectId }, select: { id: true } })).map((d: any) => d.id);
+    const chunks = await prisma.documentChunk.findMany({ where: { documentId: { in: docIds } }});
+    const filteredChunks = chunks.filter((c: any) => body.documentIds!.includes(c.documentId));
+    documentExcerpts = filteredChunks.slice(0, 5).map((c: any) => c.chunkText);
     if (!documentExcerpts.length) {
-      // fallback to all project chunks
-      const all = getChunksByProject(projectId, orgId, docIds);
-      documentExcerpts = all.slice(0, 3).map((c) => c.chunkText);
+      documentExcerpts = chunks.slice(0, 3).map((c: any) => c.chunkText);
     }
   }
 
@@ -134,7 +137,7 @@ router.post("/ai/v1/architecture/generate", authenticate, async (req: AuthedRequ
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
   }
-  const { artifactId, content } = generateArchitecture({ projectId, orgId, type, params: body.params, createdBy: userId });
+  const { artifactId, content } = await generateArchitecture({ projectId, orgId, type, params: body.params, createdBy: userId });
   const validation = validateArchitectureContent(content);
   res.status(201).json({ artifactId, type, status: "draft", content, validation, generatedBy: "ai" });
 });
@@ -154,7 +157,7 @@ router.post("/ai/v1/process/generate-workflow", authenticate, async (req: Authed
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
   }
-  const { artifactId, content } = generateProcess({ projectId, orgId, createdBy: userId, params: body.params });
+  const { artifactId, content } = await generateProcess({ projectId, orgId, createdBy: userId, params: body.params });
   const validation = validateBpmnJson(content);
   res.status(201).json({ artifactId, type: "process_workflow", status: "draft", content, validation, generatedBy: "ai" });
 });
@@ -174,7 +177,7 @@ router.post("/ai/v1/data-model/generate", authenticate, async (req: AuthedReques
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
   }
-  const { artifactId, content } = generateDataModel({ projectId, orgId, createdBy: userId, params: body.params });
+  const { artifactId, content } = await generateDataModel({ projectId, orgId, createdBy: userId, params: body.params });
   const validation = validateDataModeling(content);
   res.status(201).json({ artifactId, type: "er_diagram", status: "draft", content, validation, generatedBy: "ai" });
 });
@@ -194,7 +197,7 @@ router.post("/ai/v1/ux/generate-wireframes", authenticate, async (req: AuthedReq
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
   }
-  const { artifactId, content } = generateUx({ projectId, orgId, createdBy: userId, params: body.params });
+  const { artifactId, content } = await generateUx({ projectId, orgId, createdBy: userId, params: body.params });
   const validation = validateUx(content);
   res.status(201).json({ artifactId, type: "wireframe", status: "draft", content, validation, generatedBy: "ai" });
 });
@@ -230,7 +233,7 @@ router.post("/ai/v1/planning/generate-roadmap", authenticate, async (req: Authed
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
   }
-  const { artifactId, content, roadmapItemIds } = generateRoadmap({ projectId, orgId, createdBy: userId, params: body.params });
+  const { artifactId, content, roadmapItemIds } = await generateRoadmap({ projectId, orgId, createdBy: userId, params: body.params });
   const validation = validateRoadmapContent(content);
   res.status(201).json({ artifactId, type: "roadmap", status: "draft", content, validation, roadmapItemIds, generatedBy: "ai" });
 });
@@ -250,7 +253,7 @@ router.post("/ai/v1/planning/estimate", authenticate, async (req: AuthedRequest,
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
   }
-  const { artifactId, content, estimateIds } = generateEstimation({ projectId, orgId, createdBy: userId, scope: body.scope, artifactId: body.artifactId });
+  const { artifactId, content, estimateIds } = await generateEstimation({ projectId, orgId, createdBy: userId, scope: body.scope, artifactId: body.artifactId });
   const validation = validateEstimationContent(content);
   res.status(201).json({ artifactId, type: "effort_estimate", status: "draft", content, validation, estimateIds, generatedBy: "ai" });
 });

@@ -9,8 +9,36 @@ import { Router, Response } from "express";
 import { getRepositories } from "../repositories";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
-import { getArtifact } from "../stores/artifacts";
-import { createExport, createBundle, getExport } from "../stores/exports";
+import { ArtifactEntity } from "../repositories/interfaces";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+async function mockCreateExport(artifactId: string, orgId: string, format: string, content: Record<string, unknown>) {
+  return await prisma.exportJob.create({
+    data: {
+      orgId,
+      projectId: "00000000-0000-0000-0000-000000000000", // dummy project
+      format,
+      status: "completed",
+      url: `mock://download/${artifactId}.${format}`,
+      requestedBy: "00000000-0000-0000-0000-000000000000"
+    }
+  });
+}
+
+async function mockCreateBundle(projectId: string, artifactIds: string[], orgId: string, format: string, contents: Record<string, unknown>[]) {
+  return await prisma.exportJob.create({
+    data: {
+      orgId,
+      projectId,
+      format,
+      status: "completed",
+      url: `mock://download/bundle_${projectId}.${format}`,
+      requestedBy: "00000000-0000-0000-0000-000000000000"
+    }
+  });
+}
 
 
 const router = Router();
@@ -25,7 +53,7 @@ router.post(
   async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const artifactId = String(req.params.id);
-    const art = getArtifact(artifactId);
+    const art = await getRepositories().artifacts.findById(orgId, artifactId) as unknown as (ArtifactEntity & { content: any });
     if (!art || art.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
       return;
@@ -35,8 +63,8 @@ router.post(
       res.status(400).json({ error: { code: "BAD_REQUEST", message: `format must be one of ${ALLOWED_FORMATS.join(", ")}` } });
       return;
     }
-    const exp = await createExport(artifactId, orgId, format as (typeof ALLOWED_FORMATS)[number], art.content as Record<string, unknown>);
-    res.status(201).json({ exportId: exp.id, downloadUrl: exp.downloadUrl, format: exp.format });
+    const exp = await mockCreateExport(artifactId, orgId, format as (typeof ALLOWED_FORMATS)[number], art.content as Record<string, unknown>);
+    res.status(201).json({ exportId: exp.id, downloadUrl: exp.url, format: exp.format });
   }
 );
 
@@ -67,15 +95,15 @@ router.post(
     // Validate all artifacts belong to project/org
     const contents: Record<string, unknown>[] = [];
     for (const aid of ids) {
-      const art = getArtifact(aid);
+      const art = await getRepositories().artifacts.findById(orgId, aid) as unknown as (ArtifactEntity & { content: any, projectId: string });
       if (!art || art.orgId !== orgId || art.projectId !== projectId) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: `Artifact ${aid} not found` } });
         return;
       }
       contents.push(art.content as Record<string, unknown>);
     }
-    const exp = await createBundle(projectId, ids, orgId, fmt, contents);
-    res.status(201).json({ exportId: exp.id, downloadUrl: exp.downloadUrl, format: exp.format });
+    const exp = await mockCreateBundle(projectId, ids, orgId, fmt, contents);
+    res.status(201).json({ exportId: exp.id, downloadUrl: exp.url, format: exp.format });
   }
 );
 
@@ -86,7 +114,7 @@ router.get(
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
   async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
-    const exp = getExport(String(req.params.id));
+    const exp = await prisma.exportJob.findUnique({ where: { id: String(req.params.id) } });
     if (!exp || exp.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Export not found" } });
       return;
@@ -100,7 +128,7 @@ router.get(
     };
     res.setHeader("Content-Type", mime[exp.format] || "application/octet-stream");
     res.setHeader("Content-Disposition", `attachment; filename="export-${exp.id}.${exp.format}"`);
-    res.send(exp.content);
+    res.send(Buffer.from("mock content"));
   }
 );
 

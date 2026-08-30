@@ -25,9 +25,9 @@ router.get(
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
       return;
     }
-    const dashboard = computeDashboard(projectId, orgId);
+    const dashboard = await computeDashboard(projectId, orgId);
     // Capture snapshot for history (idempotent per request, but we create one)
-    const snapshot = captureSnapshot(projectId, orgId);
+    const snapshot = await captureSnapshot(projectId, orgId);
     res.json({ ...dashboard, snapshotId: snapshot.id });
   }
 );
@@ -45,7 +45,7 @@ router.get(
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
       return;
     }
-    const history = getDashboardHistory(projectId, orgId);
+    const history = await getDashboardHistory(projectId, orgId);
     res.json({ data: history, total: history.length });
   }
 );

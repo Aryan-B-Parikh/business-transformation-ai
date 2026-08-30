@@ -1,12 +1,15 @@
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
+import { getRepositories } from "../repositories";
 /**
  * Versioned Multi-Dimensional Mathematical Dashboard & Maturity Model (Phase 10)
  * Replaces naive boolean heuristics with weighted dimensional scoring (0-100 scale & normalized 1-5 scale)
  */
 
-import { listArtifacts } from "../stores/artifacts";
-import { getAllEffortEstimates } from "../stores/effortEstimates";
-import { createMaturitySnapshot, listMaturitySnapshots } from "../stores/maturitySnapshots";
-import { listRoadmapItems } from "../stores/roadmapItems";
+
+
+
+
 import { DashboardMaturityModel } from "@bta/shared";
 
 export interface DashboardScores {
@@ -27,8 +30,8 @@ export interface DetailedDashboardResponse {
   generatedAt: string;
 }
 
-export function computeVersionedDashboard(projectId: string, orgId: string): DetailedDashboardResponse {
-  const artifacts = listArtifacts(projectId, orgId);
+export async function computeVersionedDashboard(projectId: string, orgId: string): Promise<DetailedDashboardResponse> {
+  const artifacts = await getRepositories().artifacts.listByProject(projectId, orgId);
 
   // Dimension 1: Process Maturity (20%)
   const hasBusinessAnalysis = artifacts.some((a) => a.type === "business_analysis");
@@ -61,7 +64,7 @@ export function computeVersionedDashboard(projectId: string, orgId: string): Det
     autoScore * 0.2 +
     governanceScore * 0.2;
 
-  const estimates = getAllEffortEstimates(orgId).filter((e) =>
+  const estimates = (await prisma.effortEstimate.findMany({ where: { orgId } })).filter((e) =>
     artifacts.some((a) => a.id === e.artifactId)
   );
   const highRiskRatio =
@@ -106,9 +109,10 @@ export function computeVersionedDashboard(projectId: string, orgId: string): Det
     solutionQuality: to5Scale(solutionQuality100),
   };
 
-  const roadmapCount = artifacts
-    .filter((a) => a.type === "roadmap")
-    .reduce((s, a) => s + listRoadmapItems(a.id, orgId).length, 0);
+  let roadmapCount = 0;
+  for (const a of artifacts.filter((a) => a.type === "roadmap")) {
+    roadmapCount += await prisma.roadmapItem.count({ where: { artifactId: a.id, orgId } });
+  }
 
   return {
     projectId,
@@ -120,21 +124,23 @@ export function computeVersionedDashboard(projectId: string, orgId: string): Det
   };
 }
 
-export function computeDashboard(projectId: string, orgId: string) {
-  return computeVersionedDashboard(projectId, orgId);
+export async function computeDashboard(projectId: string, orgId: string) {
+  return await computeVersionedDashboard(projectId, orgId);
 }
 
-export function captureSnapshot(projectId: string, orgId: string): ReturnType<typeof createMaturitySnapshot> {
-  const dash = computeVersionedDashboard(projectId, orgId);
-  return createMaturitySnapshot({
-    projectId,
-    orgId,
-    digitalMaturityScore: dash.scores.digitalMaturity,
-    aiReadinessScore: dash.scores.aiReadiness,
-    automationOpportunityScore: dash.scores.automationOpportunity,
+export async function captureSnapshot(projectId: string, orgId: string) {
+  const dash = await computeVersionedDashboard(projectId, orgId);
+  return await prisma.maturitySnapshot.create({
+    data: {
+      projectId,
+      orgId,
+      digitalMaturityScore: dash.scores.digitalMaturity,
+      aiReadinessScore: dash.scores.aiReadiness,
+      automationOpportunityScore: dash.scores.automationOpportunity,
+    }
   });
 }
 
-export function getDashboardHistory(projectId: string, orgId: string): ReturnType<typeof listMaturitySnapshots> {
-  return listMaturitySnapshots(projectId, orgId);
+export async function getDashboardHistory(projectId: string, orgId: string) {
+  return await prisma.maturitySnapshot.findMany({ where: { projectId, orgId } });
 }

@@ -13,8 +13,17 @@ import { authorize } from "../middleware/rbac";
 import { processDocument, getChunks } from "../services/documentParser";
 import { retrieveRag } from "../services/rag";
 import { storeFile, getMemoryFile, generateSignedUrl } from "../services/storage";
-import { createDocument, getDocument, listDocuments, deleteDocument, updateParsedStatus, inferDocType, getDocIdsForProject } from "../stores/documents";
+import { PrismaClient } from "@prisma/client";
 
+const prisma = new PrismaClient();
+
+function inferDocTypeLocal(filename: string): "pdf" | "docx" | "pptx" | "other" {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".pdf")) return "pdf";
+  if (lower.endsWith(".docx")) return "docx";
+  if (lower.endsWith(".pptx")) return "pptx";
+  return "other";
+}
 
 const router = Router();
 
@@ -52,16 +61,17 @@ router.post(
     }
     const filename = file.originalname || "unknown";
     const { storageUrl, fileId } = await storeFile(orgId, file.buffer, filename, file.mimetype);
-    const docType = inferDocType(filename);
-    const doc = createDocument({
-      projectId,
-      orgId,
-      filename,
-      type: docType,
-      storageUrl,
-      fileId,
-      parsedStatus: "pending",
-      uploadedBy: userId,
+    const docType = inferDocTypeLocal(filename);
+    const doc = await prisma.document.create({
+      data: {
+        projectId,
+        orgId,
+        filename,
+        type: docType as any,
+        storageUrl,
+        parsedStatus: "pending",
+        uploadedBy: userId,
+      }
     });
 
     // Async parsing — fire and forget, but also await for test determinism (sync)
@@ -69,22 +79,23 @@ router.post(
     setImmediate(async () => {
       try {
         await processDocument({ documentId: doc.id, orgId, buffer: file.buffer, filename });
-        updateParsedStatus(doc.id, "parsed");
+        await prisma.document.update({ where: { id: doc.id }, data: { parsedStatus: "parsed" }});
       } catch (e) {
         console.error(`Document parsing failed [${doc.id}]:`, e instanceof Error ? e.message : e);
-        updateParsedStatus(doc.id, "failed");
+        await prisma.document.update({ where: { id: doc.id }, data: { parsedStatus: "failed" }});
       }
     });
 
-    // For tests we also want parsed quickly; we await here if query param ?sync=true
     const syncVal = Array.isArray(req.query.sync) ? req.query.sync[0] : (req.query.sync as string | undefined);
     if (syncVal === "true") {
       try {
         await processDocument({ documentId: doc.id, orgId, buffer: file.buffer, filename });
-        updateParsedStatus(doc.id, "parsed");
+        await prisma.document.update({ where: { id: doc.id }, data: { parsedStatus: "parsed" }});
+        doc.parsedStatus = "parsed";
       } catch (e) {
         console.error(`Document sync parsing failed [${doc.id}]:`, e instanceof Error ? e.message : e);
-        updateParsedStatus(doc.id, "failed");
+        await prisma.document.update({ where: { id: doc.id }, data: { parsedStatus: "failed" }});
+        doc.parsedStatus = "failed";
       }
     }
 
@@ -107,7 +118,7 @@ router.get(
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
       return;
     }
-    const docs = listDocuments(projectId, orgId);
+    const docs = await prisma.document.findMany({ where: { projectId, orgId }, orderBy: { createdAt: "desc" }});
     // Pagination — robust to string | string[] | ParsedQs
     const q = (v: unknown): string | undefined => {
       if (typeof v === "string") return v;
@@ -131,7 +142,7 @@ router.get(
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
   async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
-    const doc = getDocument(String(req.params.id));
+    const doc = await prisma.document.findUnique({ where: { id: String(req.params.id) } });
     if (!doc || doc.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
       return;
@@ -147,12 +158,12 @@ router.delete(
   authorize("org_admin", "workspace_admin", "contributor"),
   async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
-    const doc = getDocument(String(req.params.id));
+    const doc = await prisma.document.findUnique({ where: { id: String(req.params.id) } });
     if (!doc || doc.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
       return;
     }
-    deleteDocument(doc.id);
+    await prisma.document.delete({ where: { id: String(req.params.id) } });
     res.status(204).send();
   }
 );
@@ -164,14 +175,14 @@ router.get(
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
   async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
-    const doc = getDocument(String(req.params.id));
+    const doc = await prisma.document.findUnique({ where: { id: String(req.params.id) } });
     if (!doc || doc.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
       return;
     }
     // Include chunk count for debugging
     const chunks = getChunks(doc.id);
-    res.json({ id: doc.id, parsedStatus: doc.parsedStatus, parsedStatus: doc.parsedStatus, chunkCount: chunks.length });
+    res.json({ id: doc.id, parsedStatus: doc.parsedStatus, chunkCount: chunks.length });
   }
 );
 
@@ -182,12 +193,13 @@ router.get(
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
   async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
-    const doc = getDocument(String(req.params.id));
+    const doc = await prisma.document.findUnique({ where: { id: String(req.params.id) } });
     if (!doc || doc.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
       return;
     }
-    const file = getMemoryFile(doc.fileId);
+    const fileId = doc.storageUrl; // In legacy it was a separate id, we mock it using URL
+    const file = getMemoryFile(fileId);
     if (!file) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "File not found in storage" } });
       return;
@@ -213,7 +225,7 @@ router.get(
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
       return;
     }
-    const doc = getDocument(docId);
+    const doc = await prisma.document.findUnique({ where: { id: String(docId) } });
     if (!doc || doc.orgId !== orgId || doc.projectId !== projectId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
       return;
@@ -241,7 +253,8 @@ router.post(
       res.status(400).json({ error: { code: "BAD_REQUEST", message: "query required" } });
       return;
     }
-    const docIds = getDocIdsForProject(projectId);
+    const docs = await prisma.document.findMany({ where: { projectId }, select: { id: true } });
+    const docIds = new Set(docs.map(d => d.id));
     const results = retrieveRag({ projectId, orgId, query, k: k || 5, docIdsForProject: docIds });
     res.json({ query, k: k || 5, results, total: results.length });
   }
@@ -249,7 +262,7 @@ router.post(
 
 export default router;
 
-// Re-export for rag service helper
-export function getDocIdsForProjectHelper(projectId: string): Set<string> {
-  return getDocIdsForProject(projectId);
+export async function getDocIdsForProjectHelper(projectId: string): Promise<Set<string>> {
+  const docs = await prisma.document.findMany({ where: { projectId }, select: { id: true } });
+  return new Set(docs.map(d => d.id));
 }

@@ -104,7 +104,7 @@ async function invokeLLM(systemPrompt: string, userPrompt: string, config: LLMCo
     throw new Error(`LLM Invocation failed: ${response.status} ${errText}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as { choices: Array<{ message?: { content?: string } }> };
   const content = data.choices[0]?.message?.content;
   if (!content) throw new Error("No content returned from LLM");
   return content;

@@ -82,30 +82,30 @@ router.post(
       let result: { artifactId: string; content: unknown };
       switch (type) {
         case "business_analysis": {
-          const r = generateBusinessAnalysis({ projectId, orgId, createdBy: userId });
+          const r = await generateBusinessAnalysis({ projectId, orgId, createdBy: userId });
           result = { artifactId: r.artifactId, content: r.content };
           break;
         }
         case "architecture_hld":
         case "architecture_lld": {
-          const r = generateArchitecture({ projectId, orgId, type: type as "architecture_hld" | "architecture_lld", params: params as { cloud_preference?: string; compliance?: string[] }, createdBy: userId });
+          const r = await generateArchitecture({ projectId, orgId, type: type as "architecture_hld" | "architecture_lld", params: params as { cloud_preference?: string; compliance?: string[] }, createdBy: userId });
           result = { artifactId: r.artifactId, content: r.content };
           break;
         }
         case "process_workflow":
         case "bpmn_diagram": {
-          const r = generateProcess({ projectId, orgId, createdBy: userId, params: params as { processName?: string } });
+          const r = await generateProcess({ projectId, orgId, createdBy: userId, params: params as { processName?: string } });
           result = { artifactId: r.artifactId, content: r.content };
           break;
         }
         case "wireframe": {
-          const r = generateUx({ projectId, orgId, createdBy: userId, params: params as { appType?: string } });
+          const r = await generateUx({ projectId, orgId, createdBy: userId, params: params as { appType?: string } });
           result = { artifactId: r.artifactId, content: r.content };
           break;
         }
         case "er_diagram":
         case "api_spec": {
-          const r = generateDataModel({ projectId, orgId, createdBy: userId, params: params as { domain?: string } });
+          const r = await generateDataModel({ projectId, orgId, createdBy: userId, params: params as { domain?: string } });
           result = { artifactId: r.artifactId, content: r.content };
           break;
         }

@@ -11,9 +11,9 @@ import { Router, Response } from "express";
 import { getRepositories } from "../repositories";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
-import { listAiModelConfigs, updateAiModelConfig } from "../stores/aiModelConfigs";
-import { listArtifacts } from "../stores/artifacts";
-import { listAuditLogs } from "../stores/auditLogs";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 
 const router = Router();
@@ -43,7 +43,7 @@ router.get(
       const projs = await getRepositories().projects.listProjectsByWorkspace(orgId, w.id);
       projCount += projs.length;
       for (const p of projs) {
-        artCount += listArtifacts(p.id, orgId).length;
+        artCount += await prisma.artifact.count({ where: { orgId, projectId: p.id } });
       }
     }
     res.json({ orgId, workspaces: wsCount, projects: projCount, artifacts: artCount, period: "30d" });
@@ -65,7 +65,16 @@ router.get(
     const action = typeof req.query.action === "string" ? req.query.action : undefined;
     const from = typeof req.query.from === "string" ? req.query.from : undefined;
     const to = typeof req.query.to === "string" ? req.query.to : undefined;
-    const logs = listAuditLogs(orgId, { actor, action, from, to });
+
+    const where: any = { orgId };
+    if (actor) where.actorId = actor;
+    if (action) where.action = action;
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from);
+      if (to) where.createdAt.lte = new Date(to);
+    }
+    const logs = await prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" } });
     res.json({ data: logs, total: logs.length });
   }
 );
@@ -81,7 +90,7 @@ router.get(
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin" } });
       return;
     }
-    const configs = listAiModelConfigs(orgId);
+    const configs = await prisma.aiModelConfig.findMany({ where: { orgId } });
     res.json({ data: configs });
   }
 );
@@ -99,12 +108,16 @@ router.patch(
       return;
     }
     const updates = req.body as Partial<{ provider: string; modelName: string; enabled: boolean }>;
-    const updated = updateAiModelConfig(orgId, mod, updates as unknown as Partial<import("../stores/aiModelConfigs").AiModelConfig>);
-    if (!updated) {
+    try {
+      const updated = await prisma.aiModelConfig.update({
+        where: { orgId_module: { orgId, module: mod } },
+        data: updates
+      });
+      res.json(updated);
+    } catch (e) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Model config not found" } });
       return;
     }
-    res.json(updated);
   }
 );
 

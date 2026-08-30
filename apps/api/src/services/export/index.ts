@@ -1,3 +1,4 @@
+import { getRepositories } from "../../repositories";
 /**
  * Export Service — Real binary file generation for PDF, DOCX, XLSX, and PPTX
  */
@@ -6,10 +7,10 @@ import { generatePdf } from "./pdfGenerator";
 import { generateDocx } from "./docxGenerator";
 import { generateXlsx } from "./xlsxGenerator";
 import { generatePptx } from "./pptxGenerator";
-import { ExportFormat } from "../../stores/exports";
+
 
 export async function generateBinaryExport(
-  format: ExportFormat,
+  format: string,
   title: string,
   metadata: { orgId: string; artifactId?: string; projectId?: string },
   content: Record<string, unknown> | Record<string, unknown>[]

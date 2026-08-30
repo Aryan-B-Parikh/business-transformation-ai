@@ -514,3 +514,51 @@ model Notification {
   @@index([userId])
   @@map("notifications")
 }
+
+// ── Webhooks & Exports ───────────────────────────────────────────
+
+model WebhookConfig {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  url         String
+  events      String[]
+  secret      String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([orgId])
+  @@index([workspaceId])
+  @@map("webhook_configs")
+}
+
+model OutboxEvent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  event_type   String
+  aggregate_id String
+  payload      Json     @db.JsonB
+  status       String   @default("pending")
+  attempt_count Int     @default(0)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  error        String?
+
+  @@index([orgId])
+  @@index([status])
+  @@map("outbox_events")
+}
+
+model ExportJob {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  projectId    String   @map("project_id") @db.Uuid
+  format       String
+  status       String
+  url          String?
+  requestedBy  String   @map("requested_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([orgId])
+  @@index([projectId])
+  @@map("export_jobs")
+}
+

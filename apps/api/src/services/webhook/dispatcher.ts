@@ -1,6 +1,7 @@
+import { getRepositories } from "../../repositories";
 import crypto from "crypto";
 import { validateSafeWebhookUrl } from "./ssrfGuard";
-import { WebhookConfig, WebhookDelivery } from "../../stores/webhooks";
+
 
 export interface OutboxDeliveryResult {
   success: boolean;
@@ -9,7 +10,7 @@ export interface OutboxDeliveryResult {
 }
 
 export async function deliverWebhookHttp(
-  config: WebhookConfig,
+  config: any,
   event: string,
   payload: Record<string, unknown>,
   secret: string = process.env.WEBHOOK_SIGNING_SECRET || "default_webhook_secret_key_32_bytes_min"

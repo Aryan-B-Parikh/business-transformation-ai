@@ -1,10 +1,11 @@
+import { getRepositories } from "../repositories";
 /**
  * AI UX Designer agent — TASK-017
  * POST /ai/v1/ux/generate-wireframes → wireframe artifact (screen list + layout spec)
  * DoD: Output renders as low-fidelity wireframe images via TASK-018
  */
 
-import { createArtifact } from "../stores/artifacts";
+
 
 export interface UxContent {
   screens: { id: string; name: string; type: string; components: { type: string; label: string; x: number; y: number; w: number; h: number }[] }[];
@@ -20,7 +21,7 @@ export interface UxRequest {
   params?: { appType?: string };
 }
 
-export function generateUx(req: UxRequest): { artifactId: string; content: UxContent } {
+export async function generateUx(req: UxRequest): Promise<{ artifactId: string; content: UxContent }> {
   const appType = req.params?.appType || "Dashboard";
   const screens = [
     { id: "login", name: "Login", type: "auth", components: [{ type: "input", label: "Email", x: 10, y: 10, w: 200, h: 30 }, { type: "button", label: "Login", x: 10, y: 50, w: 200, h: 40 }] },
@@ -39,16 +40,11 @@ export function generateUx(req: UxRequest): { artifactId: string; content: UxCon
 
   const content: UxContent = { screens, navigationFlow, layoutSpec, diagramSpec };
 
-  const artifact = createArtifact({
-    projectId: req.projectId,
-    orgId: req.orgId,
+  const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: "wireframe",
     title: `Wireframe — ${appType}`,
     status: "draft",
     content: content as unknown as Record<string, unknown>,
-    diagramUrl: null,
-    parentArtifactId: null,
-    generatedBy: "ai",
     createdBy: req.createdBy,
   });
 

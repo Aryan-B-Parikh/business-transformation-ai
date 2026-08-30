@@ -2,8 +2,7 @@ import { Router, Response } from "express";
 import { getRepositories } from "../repositories";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
-import { getArtifact } from "../stores/artifacts";
-import { triggerWebhooks } from "../stores/webhooks";
+import { ArtifactEntity } from "../repositories/interfaces";
 
 const router = Router();
 
@@ -18,7 +17,7 @@ router.post(
       const userId = req.user!.userId;
       const artifactId = String(req.params.id);
       
-      const art = getArtifact(artifactId);
+      const art = await getRepositories().artifacts.findById(orgId, artifactId) as unknown as (ArtifactEntity & { status: string; createdBy: string; projectId: string });
       if (!art || art.orgId !== orgId) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
         return;
@@ -65,7 +64,7 @@ router.get(
       const orgId = req.user!.orgId;
       const artifactId = String(req.params.id);
       
-      const art = getArtifact(artifactId);
+      const art = await getRepositories().artifacts.findById(orgId, artifactId);
       if (!art || art.orgId !== orgId) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
         return;
@@ -89,7 +88,7 @@ router.post(
       const orgId = req.user!.orgId;
       const artifactId = String(req.params.id);
       
-      const art = getArtifact(artifactId);
+      const art = await getRepositories().artifacts.findById(orgId, artifactId) as unknown as (ArtifactEntity & { status: string });
       if (!art || art.orgId !== orgId) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
         return;
@@ -100,8 +99,8 @@ router.post(
         return;
       }
 
-      art.status = "in_review";
-      res.status(200).json(art);
+      const updated = await getRepositories().artifacts.updateStatus(orgId, artifactId, "in_review");
+      res.status(200).json(updated);
     } catch (e) {
       res.status(500).json({ error: { code: "INTERNAL_ERROR", message: (e as Error).message } });
     }
@@ -119,7 +118,7 @@ router.post(
       const userId = req.user!.userId;
       const artifactId = String(req.params.id);
       
-      const art = getArtifact(artifactId);
+      const art = await getRepositories().artifacts.findById(orgId, artifactId) as unknown as (ArtifactEntity & { status: string; createdBy: string; projectId: string });
       if (!art || art.orgId !== orgId) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
         return;
@@ -140,9 +139,9 @@ router.post(
       
       // Update state machine
       if (decision === "approved") {
-        art.status = "approved";
+        await getRepositories().artifacts.updateStatus(orgId, artifactId, "approved");
       } else {
-        art.status = "draft";
+        await getRepositories().artifacts.updateStatus(orgId, artifactId, "draft");
       }
 
       await getRepositories().governance.recordAuditLog(orgId, userId, "artifact.approve", "artifact", artifactId, { decision, approvalId: approval.id });
@@ -155,7 +154,7 @@ router.post(
         const proj = await getRepositories().projects.findProjectById(orgId, art.projectId);
         if (proj) {
           const event = decision === "approved" ? "artifact.approved" : `artifact.${decision}`;
-          triggerWebhooks(proj.workspaceId, orgId, event, { artifactId, decision, projectId: art.projectId, orgId });
+          await getRepositories().webhooks.queueOutboxEvent(orgId, event, art.projectId, { artifactId, decision, projectId: art.projectId, orgId });
         }
       } catch {
         // ignore webhook errors

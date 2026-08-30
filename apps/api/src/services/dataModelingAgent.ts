@@ -1,10 +1,11 @@
+import { getRepositories } from "../repositories";
 /**
  * Database & Integration Designer agent — TASK-016
  * POST /ai/v1/data-model/generate → ER diagram + REST API spec artifact
  * DoD: Generated schema is valid SQL DDL (parses without error); API spec is valid OpenAPI
  */
 
-import { createArtifact } from "../stores/artifacts";
+
 
 export interface DataModelingContent {
   erDiagram: { entities: { name: string; fields: { name: string; type: string; pk?: boolean; fk?: string }[] }[]; relations: { from: string; to: string; type: string }[] };
@@ -20,7 +21,7 @@ export interface DataModelingRequest {
   params?: { domain?: string };
 }
 
-export function generateDataModel(req: DataModelingRequest): { artifactId: string; content: DataModelingContent } {
+export async function generateDataModel(req: DataModelingRequest): Promise<{ artifactId: string; content: DataModelingContent }> {
   const domain = req.params?.domain || "Order";
   const entities = [
     { name: "organizations", fields: [{ name: "id", type: "uuid", pk: true }, { name: "name", type: "text" }] },
@@ -60,16 +61,11 @@ export function generateDataModel(req: DataModelingRequest): { artifactId: strin
 
   const content: DataModelingContent = { erDiagram: { entities, relations }, ddl, apiSpec, diagramSpec };
 
-  const artifact = createArtifact({
-    projectId: req.projectId,
-    orgId: req.orgId,
+  const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: "er_diagram",
     title: `Data Model — ${domain}`,
     status: "draft",
     content: content as unknown as Record<string, unknown>,
-    diagramUrl: null,
-    parentArtifactId: null,
-    generatedBy: "ai",
     createdBy: req.createdBy,
   });
 

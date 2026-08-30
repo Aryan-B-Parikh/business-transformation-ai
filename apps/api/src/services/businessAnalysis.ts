@@ -5,7 +5,11 @@
 
 import { z } from "zod";
 import { generateStructuredCompletion } from "../ai/llmProvider";
-import { createArtifact } from "../stores/artifacts";
+import { getRepositories } from "../repositories";
+import { ArtifactType } from "@bta/shared";
+
+// ... [skipping down to the generation code]
+// I will just replace the actual createArtifact part since the chunk needs exact match
 
 export interface BusinessAnalysisContent {
   gapAnalysis: { current: string; future: string; gaps: string[] };
@@ -31,7 +35,7 @@ export const BusinessAnalysisOutputSchema = z.object({
   digitalMaturityAssessment: z.object({
     current: z.number(),
     future: z.number(),
-    dimensions: z.record(z.number()),
+    dimensions: z.record(z.string(), z.number()),
   }),
 });
 
@@ -85,16 +89,11 @@ export async function generateBusinessAnalysis(req: BusinessAnalysisRequest): Pr
     );
   }
 
-  const artifact = createArtifact({
-    projectId: req.projectId,
-    orgId: req.orgId,
+  const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: "business_analysis",
     title: `Business Analysis — ${req.projectId.slice(0, 8)}`,
     status: "draft",
     content: content as unknown as Record<string, unknown>,
-    diagramUrl: null,
-    parentArtifactId: null,
-    generatedBy: "ai",
     createdBy: req.createdBy,
   });
 

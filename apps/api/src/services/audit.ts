@@ -7,6 +7,7 @@ export async function createAuditLog(params: {
   actorId: string;
   action: string;
   targetId: string;
+  targetType: string;
   metadata?: any;
   ipAddress?: string;
   requestId?: string;
@@ -17,6 +18,7 @@ export async function createAuditLog(params: {
       actorId: params.actorId,
       action: params.action,
       targetId: params.targetId,
+      targetType: params.targetType,
       metadata: params.metadata,
       ipAddress: params.ipAddress,
       requestId: params.requestId,

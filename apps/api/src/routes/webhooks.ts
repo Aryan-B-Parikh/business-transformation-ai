@@ -6,8 +6,10 @@
 import { Router, Response } from "express";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
-import { createWebhookConfig, getDeliveries, getWebhookConfig, listWebhookConfigs, triggerWebhooks } from "../stores/webhooks";
+import { PrismaClient } from "@prisma/client";
 import { getRepositories } from "../repositories";
+
+const prisma = new PrismaClient();
 
 const router = Router();
 
@@ -31,7 +33,9 @@ router.post(
       return;
     }
     const evts = events && Array.isArray(events) && events.length > 0 ? events : ["artifact.approved", "artifact.created"];
-    const cfg = createWebhookConfig({ workspaceId, orgId, url, events: evts });
+    const cfg = await prisma.webhookConfig.create({
+      data: { workspaceId, orgId, url, events: evts }
+    });
     res.status(201).json(cfg);
   }
 );
@@ -49,7 +53,7 @@ router.get(
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Workspace not found" } });
       return;
     }
-    const list = listWebhookConfigs(workspaceId, orgId);
+    const list = await prisma.webhookConfig.findMany({ where: { workspaceId, orgId } });
     res.json({ data: list });
   }
 );
@@ -59,18 +63,19 @@ router.post(
   "/workspaces/:id/webhooks/:webhookId/trigger",
   authenticate,
   authorize("org_admin", "workspace_admin"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const workspaceId = String(req.params.id);
     const webhookId = String(req.params.webhookId);
     const { event, payload } = req.body as { event?: string; payload?: Record<string, unknown> };
-    const cfg = getWebhookConfig(webhookId);
+    const cfg = await prisma.webhookConfig.findUnique({ where: { id: webhookId } });
     if (!cfg || cfg.orgId !== orgId || cfg.workspaceId !== workspaceId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Webhook not found" } });
       return;
     }
-    const deliveries = triggerWebhooks(workspaceId, orgId, event || "artifact.approved", payload || { test: true });
-    res.json({ deliveries });
+    // mock sync delivery for test
+    const outbox = await getRepositories().webhooks.queueOutboxEvent(orgId, event || "artifact.approved", workspaceId, payload || { test: true });
+    res.json({ deliveries: [outbox] });
   }
 );
 
@@ -79,9 +84,9 @@ router.get(
   "/webhooks/deliveries",
   authenticate,
   authorize("org_admin", "workspace_admin"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
-    const all = getDeliveries().filter((d) => d.orgId === orgId);
+    const all = await prisma.outboxEvent.findMany({ where: { orgId } });
     res.json({ data: all });
   }
 );

@@ -1,10 +1,11 @@
+import { getRepositories } from "../repositories";
 /**
  * Solution Architecture Builder agent — TASK-014
  * POST /ai/v1/architecture/generate → HLD/LLD artifact incl. diagram_spec
  * DoD: Given fixture input, returns valid content schema; diagram_spec renders via TASK-018
  */
 
-import { createArtifact } from "../stores/artifacts";
+
 
 export interface ArchitectureContent {
   components: string[];
@@ -25,7 +26,7 @@ export interface ArchitectureRequest {
   createdBy: string;
 }
 
-export function generateArchitecture(req: ArchitectureRequest): { artifactId: string; content: ArchitectureContent } {
+export async function generateArchitecture(req: ArchitectureRequest): Promise<{ artifactId: string; content: ArchitectureContent }> {
   if (!req.projectId || !req.orgId) throw new Error("projectId and orgId required");
   const cloud = req.params?.cloud_preference || "azure";
   const compliance = req.params?.compliance || ["iso27001"];
@@ -66,16 +67,11 @@ export function generateArchitecture(req: ArchitectureRequest): { artifactId: st
     compliance,
   };
 
-  const artifact = createArtifact({
-    projectId: req.projectId,
-    orgId: req.orgId,
+  const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: req.type,
     title: `Architecture ${isHld ? "HLD" : "LLD"} — ${req.projectId.slice(0, 8)}`,
     status: "draft",
     content: content as unknown as Record<string, unknown>,
-    diagramUrl: null,
-    parentArtifactId: null,
-    generatedBy: "ai",
     createdBy: req.createdBy,
   });
 

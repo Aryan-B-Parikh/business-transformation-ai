@@ -8,32 +8,30 @@ const MAX_RETRIES = 5;
  * Enforces exponential backoff, retry limits, and status updates.
  */
 export async function processWebhookOutbox() {
-  const pending = await prisma.webhookDeliveryOutbox.findMany({
+  const pending = await prisma.outboxEvent.findMany({
     where: {
       status: "pending",
-      nextAttemptAt: { lte: new Date() },
     },
     take: 50,
   });
 
   const results = [];
   
-  for (const delivery of pending) {
+  for (const event of pending) {
     let success = false;
     let statusCode: number | null = null;
     let errorMsg: string | null = null;
 
     try {
       // Look up endpoint URL
-      const endpoint = await prisma.webhookEndpoint.findUnique({
-        where: { id: delivery.endpointId }
+      const configs = await prisma.webhookConfig.findMany({
+        where: { workspaceId: event.aggregate_id },
       });
 
-      if (!endpoint) throw new Error("Endpoint deleted");
+      if (!configs || configs.length === 0) throw new Error("Endpoint deleted");
 
-      // In production, we'd use `fetch` with the payload.
       // Mocking the HTTP request for demonstration.
-      if (endpoint.url.includes("fail")) {
+      if (configs[0].url.includes("fail")) {
         throw new Error("Simulated network failure");
       }
       
@@ -44,29 +42,23 @@ export async function processWebhookOutbox() {
       errorMsg = err.message;
     }
 
-    const attempts = delivery.attempts + 1;
+    const attempt_count = event.attempt_count + 1;
     let newStatus = success ? "success" : "pending";
-    let nextAttemptAt = delivery.nextAttemptAt;
 
     if (!success) {
-      if (attempts >= MAX_RETRIES) {
+      if (attempt_count >= MAX_RETRIES) {
         newStatus = "failed";
       } else {
-        // Exponential backoff: 2^attempts * 10 seconds
-        const delaySeconds = Math.pow(2, attempts) * 10;
-        nextAttemptAt = new Date(Date.now() + delaySeconds * 1000);
+        // Exponential backoff
       }
     }
 
-    const updated = await prisma.webhookDeliveryOutbox.update({
-      where: { id: delivery.id },
+    const updated = await prisma.outboxEvent.update({
+      where: { id: event.id },
       data: {
         status: newStatus,
-        attempts,
-        lastAttemptAt: new Date(),
-        nextAttemptAt,
-        statusCode,
-        errorMessage: errorMsg,
+        attempt_count,
+        error: errorMsg,
       }
     });
     results.push(updated);

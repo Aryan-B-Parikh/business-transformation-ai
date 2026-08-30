@@ -1,5 +1,4 @@
 import { getRepositories } from "../repositories";
-import { getArtifact } from "../stores/artifacts";
 
 export async function addComment(
   orgId: string,
@@ -7,7 +6,7 @@ export async function addComment(
   authorId: string,
   content: string
 ) {
-  const art = getArtifact(artifactId);
+  const art = await getRepositories().artifacts.findById(orgId, artifactId);
   if (!art || art.orgId !== orgId) {
     throw new Error("Artifact not found");
   }
@@ -41,7 +40,7 @@ export async function addComment(
 }
 
 export async function getComments(orgId: string, artifactId: string) {
-  const art = getArtifact(artifactId);
+  const art = await getRepositories().artifacts.findById(orgId, artifactId);
   if (!art || art.orgId !== orgId) {
     throw new Error("Artifact not found");
   }

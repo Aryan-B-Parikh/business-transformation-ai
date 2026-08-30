@@ -27,11 +27,11 @@ export class OutboxService {
     for (const event of pending) {
       // Find configs registered for this org and event
       // Deliver via dispatcher
-      const configs = await repos.webhooks.listConfigs(event.orgId, event.aggregateId);
+      const configs = await repos.webhooks.listConfigs(event.orgId, event.aggregate_id);
       let eventSuccess = true;
 
       for (const cfg of configs) {
-        if (cfg.events.includes(event.eventType) || cfg.events.includes("*")) {
+        if (cfg.events.includes(event.event_type) || cfg.events.includes("*")) {
           const result = await deliverWebhookHttp(
             {
               id: cfg.id,
@@ -41,7 +41,7 @@ export class OutboxService {
               events: cfg.events,
               createdAt: cfg.createdAt.toISOString(),
             },
-            event.eventType,
+            event.event_type,
             event.payload,
             cfg.secret || undefined
           );
@@ -56,8 +56,8 @@ export class OutboxService {
         await repos.webhooks.markOutboxEventResult(event.id, "delivered");
         succeeded++;
       } else {
-        const nextStatus = event.attemptCount >= 5 ? "dead_letter" : "failed";
-        await repos.webhooks.markOutboxEventResult(event.id, nextStatus, "Delivery failed after attempt " + (event.attemptCount + 1));
+        const nextStatus = event.attempt_count >= 5 ? "dead_letter" : "failed";
+        await repos.webhooks.markOutboxEventResult(event.id, nextStatus, "Delivery failed after attempt " + (event.attempt_count + 1));
         failed++;
       }
     }
