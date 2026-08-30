@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import JSZip from "jszip";
 import mammoth from "mammoth";
+// @ts-ignore
 import pdfParse from "pdf-parse";
 export class ExtractionLimitError extends Error { constructor(message:string){super(message);this.name="ExtractionLimitError";} }
 export class TimeoutError extends Error { constructor(message:string){super(message);this.name="TimeoutError";} }

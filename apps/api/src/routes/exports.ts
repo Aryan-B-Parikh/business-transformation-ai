@@ -14,7 +14,7 @@ type ExportFormat = (typeof ALLOWED_FORMATS)[number];
 const isFormat = (v: unknown): v is ExportFormat => typeof v === "string" && (ALLOWED_FORMATS as readonly string[]).includes(v);
 const mime: Record<ExportFormat, string> = { pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
 const isTest = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
-const exportRepo: IExportRepository = isTest ? new MemoryExportRepository() : new PostgresExportRepository(prisma);
+const exportRepo: IExportRepository = isTest ? new MemoryExportRepository() : new PostgresExportRepository(prisma as any);
 
 async function persistExport(orgId: string, projectId: string, format: ExportFormat, content: Buffer) {
   const id = uuidv4(); const record = await exportRepo.create({ id, orgId, projectId, format, status: "queued" });
