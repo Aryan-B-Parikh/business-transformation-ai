@@ -2,7 +2,7 @@
 // Covers all tables from 03_DATA_MODEL.md with RLS-friendly org_id scoping
 // Vector embeddings use pgvector (see migration SQL for extension)
 
-generator client {
+ generator client {
   provider        = "prisma-client-js"
   previewFeatures = []
 }
@@ -12,505 +12,337 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ── Enums ──────────────────────────────────────────────────────────
-
-enum OrgPlan {
-  trial
-  standard
-  enterprise
-}
-
-enum UserRole {
-  org_admin
-  workspace_admin
-  contributor
-  reviewer
-  viewer
-}
-
-enum ProjectStatus {
-  active
-  archived
-}
-
-enum ProjectMemberRole {
-  owner
-  contributor
-  reviewer
-  viewer
-}
-
-enum DocumentType {
-  pdf
-  pptx
-  docx
-  sop
-  brd
-  other
-}
-
-enum ParsedStatus {
-  pending
-  parsed
-  failed
-}
-
-enum MessageRole {
-  user
-  ai
-}
-
-enum ArtifactType {
-  recommendation
-  business_analysis
-  architecture_hld
-  architecture_lld
-  process_workflow
-  bpmn_diagram
-  wireframe
-  er_diagram
-  api_spec
-  roadmap
-  effort_estimate
-  dashboard_snapshot
-}
-
-enum ArtifactStatus {
-  draft
-  in_review
-  approved
-}
-
-enum GeneratedBy {
-  ai
-  user
-  hybrid
-}
-
-enum ApprovalDecision {
-  approved
-  rejected
-  changes_requested
-}
-
-enum RiskLevel {
-  low
-  medium
-  high
-}
-
-enum JourneyStage {
-  idea
-  discovery
-  business_analysis
-  solution_design
-  architecture
-  process_design
-  ux_design
-  data_design
-  planning
-  review
-  approved
-  implementation
-}
-
-// ── Core entities ─────────────────────────────────────────────────
+enum OrgPlan { trial standard enterprise }
+enum UserRole { org_admin workspace_admin contributor reviewer viewer }
+enum ProjectStatus { active archived }
+enum ProjectMemberRole { owner contributor reviewer viewer }
+enum DocumentType { pdf pptx docx sop brd other }
+enum ParsedStatus { pending parsed failed }
+enum MessageRole { user ai }
+enum ArtifactType { recommendation business_analysis architecture_hld architecture_lld process_workflow bpmn_diagram wireframe er_diagram api_spec roadmap effort_estimate dashboard_snapshot }
+enum ArtifactStatus { draft in_review approved }
+enum GeneratedBy { ai user hybrid }
+enum ApprovalDecision { approved rejected changes_requested }
+enum RiskLevel { low medium high }
+enum JourneyStage { idea discovery business_analysis solution_design architecture process_design ux_design data_design planning review approved implementation }
 
 model Organization {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  plan      OrgPlan  @default(trial)
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name String
+  plan OrgPlan @default(trial)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  
-  // Phase 19: Enterprise Administration - Quotas
-  maxProjects Int    @default(10) @map("max_projects")
-  maxUsers    Int    @default(50) @map("max_users")
-  maxStorageMb Int   @default(5000) @map("max_storage_mb")
-  aiTokenQuota Int   @default(1000000) @map("ai_token_quota")
-  aiTokenUsed  Int   @default(0) @map("ai_token_used")
-
-  users      User[]
+  maxProjects Int @default(10) @map("max_projects")
+  maxUsers Int @default(50) @map("max_users")
+  maxStorageMb Int @default(5000) @map("max_storage_mb")
+  aiTokenQuota Int @default(1000000) @map("ai_token_quota")
+  aiTokenUsed Int @default(0) @map("ai_token_used")
+  users User[]
   workspaces Workspace[]
-  // RLS note: organizations has no org_id — it IS the tenant root
-
   @@map("organizations")
 }
-
 model User {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  email       String
-  name        String
-  role        UserRole
-  ssoProvider String?  @map("sso_provider")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
-
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  email String
+  name String
+  role UserRole
+  ssoProvider String? @map("sso_provider")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   workspacesCreated Workspace[] @relation("WorkspaceCreator")
   documentsUploaded Document[]
   conversationsStarted Conversation[]
-  artifactsCreated  Artifact[]    @relation("ArtifactCreator")
-  commentsAuthored  ArtifactComment[]
-  approvals         ArtifactApproval[]
-  auditLogs         AuditLog[]    @relation("AuditActor")
-  notifications     Notification[]
-  projectMembers    ProjectMember[]
-  refreshTokens     RefreshToken[]
-
+  artifactsCreated Artifact[] @relation("ArtifactCreator")
+  commentsAuthored ArtifactComment[]
+  approvals ArtifactApproval[]
+  auditLogs AuditLog[] @relation("AuditActor")
+  notifications Notification[]
+  projectMembers ProjectMember[]
+  refreshTokens RefreshToken[]
   @@unique([orgId, email])
   @@index([orgId])
   @@map("users")
 }
-
 model Workspace {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId     String   @map("org_id") @db.Uuid
-  name      String
-  createdBy String   @map("created_by") @db.Uuid
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  name String
+  createdBy String @map("created_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  creator      User         @relation("WorkspaceCreator", fields: [createdBy], references: [id])
-  projects     Project[]
-
+  creator User @relation("WorkspaceCreator", fields: [createdBy], references: [id])
+  projects Project[]
   @@index([orgId])
   @@map("workspaces")
 }
-
 model Project {
-  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId String        @map("workspace_id") @db.Uuid
-  orgId       String        @map("org_id") @db.Uuid
-  name        String
-  status      ProjectStatus @default(active)
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
-
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  members     ProjectMember[]
-  documents   Document[]
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  name String
+  status ProjectStatus @default(active)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members ProjectMember[]
+  documents Document[]
   conversations Conversation[]
-  artifacts   Artifact[]
+  artifacts Artifact[]
   maturitySnapshots MaturitySnapshot[]
-  journey     TransformationJourney?
-
+  journey TransformationJourney?
   @@index([orgId])
   @@index([workspaceId])
   @@map("projects")
 }
-
 model ProjectMember {
-  projectId String            @map("project_id") @db.Uuid
-  userId    String            @map("user_id") @db.Uuid
-  role      ProjectMemberRole
-  // orgId added for RLS even though 03_DATA_MODEL.md omits it — required for tenant isolation per §216
-  orgId     String            @map("org_id") @db.Uuid
-
+  projectId String @map("project_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  role ProjectMemberRole
+  orgId String @map("org_id") @db.Uuid
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@id([projectId, userId])
   @@index([orgId])
   @@index([projectId])
   @@map("project_members")
 }
-
-// ── Input / Context entities ──────────────────────────────────────
-
 model Document {
-  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  projectId   String       @map("project_id") @db.Uuid
-  orgId       String       @map("org_id") @db.Uuid
-  filename    String
-  type        DocumentType
-  storageUrl  String       @map("storage_url")
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  filename String
+  type DocumentType
+  storageUrl String @map("storage_url")
   parsedStatus ParsedStatus @default(pending) @map("parsed_status")
-  uploadedBy  String       @map("uploaded_by") @db.Uuid
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  uploader  User    @relation(fields: [uploadedBy], references: [id])
-  chunks    DocumentChunk[]
-
+  uploadedBy String @map("uploaded_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploadedBy], references: [id])
+  chunks DocumentChunk[]
   @@index([orgId])
   @@index([projectId])
   @@map("documents")
 }
-
 model DocumentChunk {
-  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  documentId String  @map("document_id") @db.Uuid
-  orgId      String  @map("org_id") @db.Uuid
-  chunkText  String  @map("chunk_text") @db.Text
-  // pgvector embedding — 1536 dims (OpenAI ada) — stored via raw SQL; Prisma uses Unsupported
-  embedding  Unsupported("vector(1536)")?
-  pageRef    Int?    @map("page_ref")
-
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  chunkText String @map("chunk_text") @db.Text
+  embedding Unsupported("vector(1536)")?
+  pageRef Int? @map("page_ref")
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-
   @@index([orgId])
   @@index([documentId])
   @@map("document_chunks")
 }
-
 model Conversation {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  projectId String   @map("project_id") @db.Uuid
-  orgId     String   @map("org_id") @db.Uuid
-  startedBy String   @map("started_by") @db.Uuid
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  startedBy String @map("started_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  starter  User    @relation(fields: [startedBy], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  starter User @relation(fields: [startedBy], references: [id])
   messages ConversationMessage[]
-
   @@index([orgId])
   @@index([projectId])
   @@map("conversations")
 }
-
 model ConversationMessage {
-  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  conversationId String      @map("conversation_id") @db.Uuid
-  orgId          String      @map("org_id") @db.Uuid
-  role           MessageRole
-  content        String      @db.Text
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
-
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String @map("conversation_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  role MessageRole
+  content String @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
   @@index([orgId])
   @@index([conversationId])
   @@map("conversation_messages")
 }
-
-// ── Artifact entities ─────────────────────────────────────────────
-
 model Artifact {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  projectId        String         @map("project_id") @db.Uuid
-  orgId            String         @map("org_id") @db.Uuid
-  type             ArtifactType
-  title            String
-  status           ArtifactStatus @default(draft)
-  content          Json           @db.JsonB
-  diagramUrl       String?        @map("diagram_url")
-  version          Int            @default(1)
-  parentArtifactId String?        @map("parent_artifact_id") @db.Uuid
-  generatedBy      GeneratedBy    @map("generated_by")
-  createdBy        String         @map("created_by") @db.Uuid
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  
-  // Phase 13: Artifact Versioning
-  sourceRevision   Int?           @map("source_revision")
-  formulaVersion   String?        @map("formula_version")
-  promptVersion    String?        @map("prompt_version")
-  model            String?        @map("model")
-
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  creator        User     @relation("ArtifactCreator", fields: [createdBy], references: [id])
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  type ArtifactType
+  title String
+  status ArtifactStatus @default(draft)
+  content Json @db.JsonB
+  diagramUrl String? @map("diagram_url")
+  version Int @default(1)
+  parentArtifactId String? @map("parent_artifact_id") @db.Uuid
+  generatedBy GeneratedBy @map("generated_by")
+  createdBy String @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  sourceRevision Int? @map("source_revision")
+  formulaVersion String? @map("formula_version")
+  promptVersion String? @map("prompt_version")
+  model String?
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator User @relation("ArtifactCreator", fields: [createdBy], references: [id])
   parentArtifact Artifact? @relation("ArtifactVersions", fields: [parentArtifactId], references: [id])
   childArtifacts Artifact[] @relation("ArtifactVersions")
-  comments       ArtifactComment[]
-  approvals      ArtifactApproval[]
-  roadmapItems   RoadmapItem[]
+  comments ArtifactComment[]
+  approvals ArtifactApproval[]
+  roadmapItems RoadmapItem[]
   effortEstimates EffortEstimate[]
-
   @@index([orgId])
   @@index([projectId])
   @@index([type])
   @@index([parentArtifactId])
   @@map("artifacts")
 }
-
 model ArtifactComment {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  artifactId      String   @map("artifact_id") @db.Uuid
-  orgId           String   @map("org_id") @db.Uuid
-  authorId        String   @map("author_id") @db.Uuid
-  parentCommentId String?  @map("parent_comment_id") @db.Uuid
-  content         String   @db.Text
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  artifact      Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
-  author        User     @relation(fields: [authorId], references: [id])
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  artifactId String @map("artifact_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  parentCommentId String? @map("parent_comment_id") @db.Uuid
+  content String @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
   parentComment ArtifactComment? @relation("CommentThread", fields: [parentCommentId], references: [id])
-  replies       ArtifactComment[] @relation("CommentThread")
-
+  replies ArtifactComment[] @relation("CommentThread")
   @@index([orgId])
   @@index([artifactId])
   @@map("artifact_comments")
 }
-
 model ArtifactApproval {
-  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  artifactId String           @map("artifact_id") @db.Uuid
-  orgId      String           @map("org_id") @db.Uuid
-  approverId String           @map("approver_id") @db.Uuid
-  decision   ApprovalDecision
-  comment    String?          @db.Text
-  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz
-
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  artifactId String @map("artifact_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  approverId String @map("approver_id") @db.Uuid
+  decision ApprovalDecision
+  comment String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
-  approver User     @relation(fields: [approverId], references: [id])
-
+  approver User @relation(fields: [approverId], references: [id])
   @@index([orgId])
   @@index([artifactId])
   @@map("artifact_approvals")
 }
-
-// ── Planning & Dashboard ──────────────────────────────────────────
-
 model RoadmapItem {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  artifactId   String   @map("artifact_id") @db.Uuid
-  orgId        String   @map("org_id") @db.Uuid
-  title        String
-  phase        String
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  artifactId String @map("artifact_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  title String
+  phase String
   startEstimate DateTime @map("start_estimate") @db.Date
-  endEstimate   DateTime @map("end_estimate") @db.Date
-  dependencies String[] @db.Uuid // array of other roadmap_item ids; FK enforced at app layer
-
+  endEstimate DateTime @map("end_estimate") @db.Date
+  dependencies String[] @db.Uuid
   artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
-
   @@index([orgId])
   @@index([artifactId])
   @@map("roadmap_items")
 }
-
 model EffortEstimate {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  artifactId   String    @map("artifact_id") @db.Uuid
-  orgId        String    @map("org_id") @db.Uuid
-  itemName     String    @map("item_name")
-  effortHours  Decimal   @map("effort_hours") @db.Decimal(10, 2)
-  costEstimate Decimal   @map("cost_estimate") @db.Decimal(12, 2)
-  riskLevel    RiskLevel @map("risk_level")
-
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  artifactId String @map("artifact_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  itemName String @map("item_name")
+  effortHours Decimal @map("effort_hours") @db.Decimal(10, 2)
+  costEstimate Decimal @map("cost_estimate") @db.Decimal(12, 2)
+  riskLevel RiskLevel @map("risk_level")
   artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
-
   @@index([orgId])
   @@index([artifactId])
   @@map("effort_estimates")
 }
-
 model MaturitySnapshot {
-  id                          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  projectId                   String   @map("project_id") @db.Uuid
-  orgId                       String   @map("org_id") @db.Uuid
-  digitalMaturityScore        Decimal  @map("digital_maturity_score") @db.Decimal(5, 2)
-  aiReadinessScore            Decimal  @map("ai_readiness_score") @db.Decimal(5, 2)
-  automationOpportunityScore  Decimal  @map("automation_opportunity_score") @db.Decimal(5, 2)
-  capturedAt                  DateTime @default(now()) @map("captured_at") @db.Timestamptz
-
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  digitalMaturityScore Decimal @map("digital_maturity_score") @db.Decimal(5, 2)
+  aiReadinessScore Decimal @map("ai_readiness_score") @db.Decimal(5, 2)
+  automationOpportunityScore Decimal @map("automation_opportunity_score") @db.Decimal(5, 2)
+  capturedAt DateTime @default(now()) @map("captured_at") @db.Timestamptz
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
   @@index([orgId])
   @@index([projectId])
   @@map("maturity_snapshots")
 }
-
 model TransformationJourney {
-  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  projectId   String       @unique @map("project_id") @db.Uuid
-  orgId       String       @map("org_id") @db.Uuid
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String @unique @map("project_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
   currentStage JourneyStage @map("current_stage") @default(idea)
-  status      String       @default("active")
-  version     Int          @default(1)
-  enteredAt   DateTime     @default(now()) @map("entered_at") @db.Timestamptz
-  completedAt DateTime?    @map("completed_at") @db.Timestamptz
-  actor       String       @db.Uuid
-
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status String @default("active")
+  version Int @default(1)
+  enteredAt DateTime @default(now()) @map("entered_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  actor String @db.Uuid
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   transitions JourneyTransition[]
-
   @@index([orgId])
   @@map("transformation_journeys")
 }
-
 model JourneyTransition {
-  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  journeyId   String       @map("journey_id") @db.Uuid
-  orgId       String       @map("org_id") @db.Uuid
-  fromStage   JourneyStage? @map("from_stage")
-  toStage     JourneyStage @map("to_stage")
-  actor       String       @db.Uuid
-  reason      String?
-  revision    Int
-  timestamp   DateTime     @default(now()) @db.Timestamptz
-
-  journey     TransformationJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
-
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  journeyId String @map("journey_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  fromStage JourneyStage? @map("from_stage")
+  toStage JourneyStage @map("to_stage")
+  actor String @db.Uuid
+  reason String? @db.Text
+  version Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  journey TransformationJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
   @@index([orgId])
   @@index([journeyId])
   @@map("journey_transitions")
 }
-
-// ── Governance & Admin ────────────────────────────────────────────
-
-model AuditLog {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId      String   @map("org_id") @db.Uuid
-  actorId    String   @map("actor_id") @db.Uuid
-  action     String   // e.g. "artifact.approve", "user.role_change"
-  targetType String   @map("target_type")
-  targetId   String   @map("target_id") @db.Uuid
-  metadata   Json?    @db.JsonB
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
-  
-  // Phase 20: Audit Logging IP and Request correlation
-  ipAddress  String?  @map("ip_address")
-  requestId  String?  @map("request_id")
-
-  actor User @relation("AuditActor", fields: [actorId], references: [id])
-
-  @@index([orgId])
-  @@index([actorId])
-  @@index([action])
-  @@map("audit_logs")
-}
-
 model RefreshToken {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @map("token_hash")
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  tokenHash String @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
   revokedAt DateTime? @map("revoked_at") @db.Timestamptz
-  userAgent String?   @map("user_agent")
-  ipAddress String?   @map("ip_address")
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
-
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  @@index([orgId])
   @@index([userId])
-  @@index([tokenHash])
   @@map("refresh_tokens")
 }
-
-model AiModelConfig {
-  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId     String  @map("org_id") @db.Uuid
-  module    String  // e.g. "architecture-agent"
-  provider  String
-  modelName String  @map("model_name")
-  enabled   Boolean @default(true)
-
-  @@unique([orgId, module])
-  @@index([orgId])
-  @@map("ai_model_configs")
-}
-
-model Notification {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId     String   @map("org_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  type      String
-  payload   Json     @db.JsonB
-  read      Boolean  @default(false)
+model AuditLog {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  action String
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  metadata Json @db.JsonB
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-
+  actor User @relation("AuditActor", fields: [actorId], references: [id])
+  @@index([orgId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+model Notification {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  type String
+  payload Json @db.JsonB
+  read Boolean @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([orgId])
   @@index([userId])
   @@map("notifications")
+}
+model Export {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId String @map("org_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  format String
+  status String @default("queued")
+  storageKey String? @map("storage_key")
+  error String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  @@index([orgId])
+  @@index([projectId])
+  @@index([status])
+  @@map("exports")
 }
