@@ -53,10 +53,8 @@ jobs:
           S3_SECRET_KEY: minioadmin
           PARSER_SANDBOX_URL: http://localhost:8080/parse
         run: |
-          npx vitest run tests/rls.test.ts
+          npx vitest run tests/e2e/
           npx vitest run tests/goldenPath.e2e.test.ts
-          npx vitest run tests/webhook.test.ts
-          npx vitest run tests/rag.test.ts
       - name: Teardown Infrastructure
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
