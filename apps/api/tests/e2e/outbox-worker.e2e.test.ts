@@ -40,8 +40,9 @@ describe("Phase 33 - Transactional Outbox and Worker E2E", () => {
         data: {
           id: "eeeeeeee-1111-1111-1111-111111111111",
           orgId,
-          eventType: "project.created",
-          payload: { projectId: "proj-outbox-test" },
+          event_type: "project.created",
+          aggregate_id: "00000000-0000-0000-0000-000000000006",
+          payload: { projectId: "00000000-0000-0000-0000-000000000006" },
           status: "pending",
         }
       });
@@ -65,7 +66,8 @@ describe("Phase 33 - Transactional Outbox and Worker E2E", () => {
           data: {
             id: "11111111-1111-1111-1111-111111111111",
             orgId,
-            eventType: "project.created",
+            event_type: "project.created",
+            aggregate_id: "failed",
             payload: { projectId: "failed" },
             status: "pending",
           }

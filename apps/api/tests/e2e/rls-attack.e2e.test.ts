@@ -84,14 +84,14 @@ describe("Phase 33 - RLS Attack and Privilege Verification", () => {
     await withTenant(prisma, orgA, async (tx) => {
       const projects = await tx.project.findMany();
       expect(projects).toHaveLength(1);
-      expect(projects[0].id).toBe("proj-a");
+      expect(projects[0].id).toBe("00000000-0000-0000-0000-000000000002");
     });
 
     // Tenant B queries projects
     await withTenant(prisma, orgB, async (tx) => {
       const projects = await tx.project.findMany();
       expect(projects).toHaveLength(1);
-      expect(projects[0].id).toBe("proj-b");
+      expect(projects[0].id).toBe("00000000-0000-0000-0000-000000000003");
     });
   });
 });

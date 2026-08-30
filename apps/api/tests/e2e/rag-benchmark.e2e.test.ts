@@ -33,7 +33,16 @@ describe("Phase 33 - RAG Benchmark and Cost E2E", () => {
         data: { id: projId, orgId, workspaceId: orgId, name: "RAG Proj" }
       });
       await tx.document.create({
-        data: { id: "00000000-0000-0000-0000-000000000005", projectId: projId, orgId, filename: "test.pdf", storageUrl: "s3://1", type: "pdf", status: "completed", fileId: "f1", parsedStatus: "completed" }
+        data: { 
+          id: "00000000-0000-0000-0000-000000000005", 
+          orgId, 
+          filename: "test.pdf", 
+          storageUrl: "s3://1", 
+          type: "pdf", 
+          parsedStatus: "completed",
+          project: { connect: { id: projId } },
+          uploader: { connect: { id: orgId } }
+        }
       });
 
       // Insert vectors
