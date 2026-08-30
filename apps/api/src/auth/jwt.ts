@@ -16,10 +16,21 @@ export interface JwtPayload {
 }
 
 const DEFAULT_EXPIRES_IN = "8h";
-const DEFAULT_SECRET = "dev_jwt_secret_change_in_production_32chars!";
+const DEFAULT_DEV_SECRET = "dev_jwt_secret_change_in_production_32chars!";
+export const CANONICAL_ISSUER = "https://auth.business-transformation-ai.com";
+export const CANONICAL_AUDIENCE = "https://api.business-transformation-ai.com";
 
 export function getJwtSecret(): string {
-  return process.env.JWT_SECRET || DEFAULT_SECRET;
+  if (process.env.NODE_ENV === "production") {
+    const secret = process.env.JWT_SECRET;
+    if (!secret || secret === DEFAULT_DEV_SECRET || secret.length < 32) {
+      throw new Error(
+        "CRITICAL SECURITY INVARIANT VIOLATION: Production requires a secure JWT_SECRET of at least 32 characters. Refusing to start."
+      );
+    }
+    return secret;
+  }
+  return process.env.JWT_SECRET || DEFAULT_DEV_SECRET;
 }
 
 export function getJwtExpiresIn(): string {
@@ -35,17 +46,24 @@ export function signToken(payload: Omit<JwtPayload, "iat" | "exp">, expiresIn?: 
   if (!payload.role) throw new Error("role is required in JWT");
   if (!payload.userId) throw new Error("userId is required in JWT");
   return jwt.sign(payload as object, getJwtSecret(), {
+    algorithm: "HS256",
+    issuer: CANONICAL_ISSUER,
+    audience: CANONICAL_AUDIENCE,
     expiresIn: (expiresIn || getJwtExpiresIn()) as string & { _opaque?: never },
   } as jwt.SignOptions);
 }
 
 /**
- * Verify and decode a JWT. Throws if invalid or expired.
+ * Verify and decode a JWT. Throws if invalid, expired, or failed iss/aud.
  * DoD: expired/invalid tokens are rejected with 401
  */
 export function verifyToken(token: string): JwtPayload {
   try {
-    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
+    const decoded = jwt.verify(token, getJwtSecret(), {
+      algorithms: ["HS256"],
+      issuer: CANONICAL_ISSUER,
+      audience: CANONICAL_AUDIENCE,
+    }) as JwtPayload;
     if (!decoded.orgId || !decoded.role || !decoded.userId) {
       throw new Error("Invalid token payload: missing orgId/role/userId");
     }
@@ -75,6 +93,9 @@ export function signTokenWithExpiry(
   expiresIn: string | number
 ): string {
   return jwt.sign(payload as object, getJwtSecret(), {
+    algorithm: "HS256",
+    issuer: CANONICAL_ISSUER,
+    audience: CANONICAL_AUDIENCE,
     expiresIn: expiresIn as unknown as string,
   } as jwt.SignOptions);
 }
@@ -82,5 +103,14 @@ export function signTokenWithExpiry(
 /** Create an already-expired token for testing */
 export function signExpiredToken(payload: Omit<JwtPayload, "iat" | "exp">): string {
   // exp in the past
-  return jwt.sign({ ...payload, exp: Math.floor(Date.now() / 1000) - 10 }, getJwtSecret());
+  return jwt.sign(
+    {
+      ...payload,
+      iss: CANONICAL_ISSUER,
+      aud: CANONICAL_AUDIENCE,
+      exp: Math.floor(Date.now() / 1000) - 10,
+    },
+    getJwtSecret(),
+    { algorithm: "HS256" }
+  );
 }

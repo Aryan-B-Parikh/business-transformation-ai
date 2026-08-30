@@ -120,36 +120,32 @@ describe("Tenant isolation — unit behaviour (TASK-002 DoD: zero rows without t
     expect(tenantWhere(orgA, { status: "active" })).toEqual({ org_id: orgA, status: "active" });
   });
 
-  it("setTenantSql generates SET LOCAL with safe escaping", () => {
-    const sql = setTenantSql(orgA);
-    expect(sql).toContain("set_config('app.current_org_id'");
-    expect(sql).toContain(orgA);
-    expect(sql).toContain("true");
-    // escaping single quote
-    const withQuote = setTenantSql("a'b");
-    expect(withQuote).toContain("a''b");
-  });
-
-  it("withTenant sets GUC then delegates to fn (mock prisma)", async () => {
-    const calls: string[] = [];
+  it("withTenant sets parameterized GUC then delegates to fn (mock prisma)", async () => {
+    const calls: { sql: string; values: unknown[] }[] = [];
     const mockPrisma = {
       $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
-          $executeRawUnsafe: async (sql: string) => {
-            calls.push(sql);
+          $executeRawUnsafe: async (sql: string, ...values: unknown[]) => {
+            calls.push({ sql, values });
           },
         };
         return fn(tx);
       },
-      $executeRawUnsafe: async () => {},
     };
-    let fnCalled = false;
-    await withTenant(mockPrisma as unknown as { $transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>; $executeRawUnsafe: (sql: string) => Promise<unknown> }, orgA, async () => {
-      fnCalled = true;
-      return "ok";
-    });
-    expect(calls[0]).toContain("app.current_org_id");
-    expect(fnCalled).toBe(true);
+    const result = await withTenant(mockPrisma as any, orgA, async () => "ok");
+    expect(result).toBe("ok");
+    expect(calls.length).toBe(1);
+    expect(calls[0].sql).toBe("SELECT set_config('app.current_org_id', $1, true)");
+    expect(calls[0].values).toEqual([orgA]);
+  });
+
+  it("withTenant throws if executeRawUnsafe is missing", async () => {
+    const brokenPrisma = {
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+    };
+    await expect(withTenant(brokenPrisma as any, orgA, async () => "ok")).rejects.toThrow(
+      /CRITICAL RLS VIOLATION/
+    );
   });
 
   it("withTenant throws if orgId missing", async () => {

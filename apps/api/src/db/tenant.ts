@@ -24,16 +24,10 @@ export function tenantWhere(orgId: string | undefined, extra: Record<string, unk
   return { org_id: tenantId, ...extra } as Record<string, unknown>;
 }
 
-/** SQL to set tenant GUC — parameterized transaction-scoped set_config */
-export function setTenantSql(orgId: string): string {
-  // Use transaction-local set_config (is_local = true)
-  const safe = orgId.replace(/'/g, "''");
-  return `SELECT set_config('app.current_org_id', '${safe}', true)`;
-}
-
 /**
  * Run fn inside a transaction with the tenant GUC set.
- * Uses parameterized or escaped transaction-local set_config('app.current_org_id', $1, true)
+ * Uses parameterized transaction-local set_config('app.current_org_id', $1, true)
+ * Fails fast if tenant GUC cannot be established.
  * Example:
  *   await withTenant(prisma, orgId, async (tx) => tx.workspace.findMany());
  */
@@ -41,7 +35,6 @@ export async function withTenant<T>(
   prisma: {
     $transaction: (fn: (tx: unknown) => Promise<T>) => Promise<T>;
     $executeRawUnsafe?: (sql: string, ...values: unknown[]) => Promise<unknown>;
-    $executeRaw?: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
   },
   orgId: string,
   fn: (tx: unknown) => Promise<T>
@@ -51,9 +44,10 @@ export async function withTenant<T>(
     const p = tx as {
       $executeRawUnsafe?: (sql: string, ...values: unknown[]) => Promise<unknown>;
     };
-    if (typeof p.$executeRawUnsafe === "function") {
-      await p.$executeRawUnsafe("SELECT set_config('app.current_org_id', $1, true)", tenantId);
+    if (typeof p.$executeRawUnsafe !== "function") {
+      throw new Error("CRITICAL RLS VIOLATION: $executeRawUnsafe is not available to set tenant context. Transaction aborted.");
     }
+    await p.$executeRawUnsafe("SELECT set_config('app.current_org_id', $1, true)", tenantId);
     return fn(tx);
   });
 }
