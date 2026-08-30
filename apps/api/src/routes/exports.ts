@@ -4,8 +4,8 @@ import { prisma } from "../db/client";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
 import { generateBinaryExport } from "../services/export";
-import { storeExport, generateSignedUrl } from "../services/storage";
-import { PostgresExportRepository } from "../services/export/exportRepository";
+import { storeExport, generateSignedUrl, getMemoryFile } from "../services/storage";
+import { IExportRepository, MemoryExportRepository, PostgresExportRepository } from "../services/export/exportRepository";
 import { v4 as uuidv4 } from "uuid";
 
 const router = Router();
@@ -13,18 +13,17 @@ const ALLOWED_FORMATS = ["pdf", "docx", "xlsx", "pptx"] as const;
 type ExportFormat = (typeof ALLOWED_FORMATS)[number];
 const isFormat = (v: unknown): v is ExportFormat => typeof v === "string" && (ALLOWED_FORMATS as readonly string[]).includes(v);
 const mime: Record<ExportFormat, string> = { pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
-const exportRepo = new PostgresExportRepository(prisma);
+const isTest = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+const exportRepo: IExportRepository = isTest ? new MemoryExportRepository() : new PostgresExportRepository(prisma);
 
-async function persistExport(orgId: string, projectId: string, artifactId: string | null, format: ExportFormat, content: Buffer) {
-  const id = uuidv4();
-  const record = await exportRepo.create({ id, orgId, projectId, format, status: "queued" });
+async function persistExport(orgId: string, projectId: string, format: ExportFormat, content: Buffer) {
+  const id = uuidv4(); const record = await exportRepo.create({ id, orgId, projectId, format, status: "queued" });
   try {
     const stored = await storeExport(orgId, content, `export-${id}.${format}`, mime[format]);
     await exportRepo.complete(record.id, stored.storageUrl);
     return { id: record.id, downloadUrl: `/api/v1/exports/${record.id}/download`, format };
   } catch (error) {
-    await exportRepo.fail(record.id, error instanceof Error ? error.message : "Export storage failed");
-    throw error;
+    await exportRepo.fail(record.id, error instanceof Error ? error.message : "Export storage failed"); throw error;
   }
 }
 
@@ -33,7 +32,7 @@ router.post("/artifacts/:id/export", authenticate, authorize("org_admin", "works
   if (!art) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
   const format = req.body?.format; if (!isFormat(format)) return res.status(400).json({ error: { code: "BAD_REQUEST", message: `format must be one of ${ALLOWED_FORMATS.join(", ")}` } });
   const content = await generateBinaryExport(format, `Artifact Export (${artifactId})`, { orgId, artifactId }, art.content as Record<string, unknown>);
-  const result = await persistExport(orgId, art.projectId, artifactId, format, content);
+  const result = await persistExport(orgId, art.projectId, format, content);
   return res.status(201).json({ exportId: result.id, downloadUrl: result.downloadUrl, format: result.format });
 });
 
@@ -46,7 +45,7 @@ router.post("/projects/:id/export-bundle", authenticate, authorize("org_admin", 
   const contents: Record<string, unknown>[] = [];
   for (const aid of ids as string[]) { const art = await getRepositories().artifacts.findById(orgId, aid); if (!art || art.projectId !== projectId) return res.status(404).json({ error: { code: "NOT_FOUND", message: `Artifact ${aid} not found` } }); contents.push(art.content as Record<string, unknown>); }
   const content = await generateBinaryExport(format, `Project Transformation Bundle (${projectId})`, { orgId, projectId }, contents);
-  const result = await persistExport(orgId, projectId, null, format, content);
+  const result = await persistExport(orgId, projectId, format, content);
   return res.status(201).json({ exportId: result.id, downloadUrl: result.downloadUrl, format: result.format });
 });
 
@@ -54,7 +53,11 @@ router.get("/exports/:id/download", authenticate, authorize("org_admin", "worksp
   const exp = await exportRepo.getById(String(req.params.id), req.user!.orgId);
   if (!exp || exp.status !== "completed" || !exp.storageKey) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Export not found" } });
   if (exp.storageKey.startsWith("s3://")) return res.redirect(302, await generateSignedUrl(exp.id, req.user!.orgId, exp.storageKey));
+  if (isTest && exp.storageKey.startsWith("memory://")) {
+    const fileId = exp.storageKey.split("/").pop()!; const file = getMemoryFile(fileId);
+    if (!file || file.orgId !== req.user!.orgId) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Export object not found" } });
+    res.setHeader("Content-Type", mime[exp.format as ExportFormat]); res.setHeader("Content-Disposition", `attachment; filename="export-${exp.id}.${exp.format}"`); return res.send(file.buffer);
+  }
   return res.status(404).json({ error: { code: "NOT_FOUND", message: "Export object is not available" } });
 });
-
 export default router;
