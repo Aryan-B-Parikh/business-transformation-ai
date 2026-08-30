@@ -3,46 +3,46 @@ import request from "supertest";
 import { PrismaClient } from "@prisma/client";
 import { createApp } from "../src/app";
 import { generateToken } from "../src/auth/jwt";
-import { withTenant } from "../src/db/tenant";
 
 describe("Golden Path E2E (Phase 29)", () => {
   const app = createApp();
-  let prisma: PrismaClient;
+  let prisma: PrismaClient | undefined;
 
   const orgId = "00000000-0000-0000-0000-000000000021";
   const userId = "00000000-0000-0000-0000-000000000022";
 
   beforeAll(async () => {
-    if (process.env.DATABASE_URL) {
-      prisma = new PrismaClient();
+    if (!process.env.DATABASE_URL) return;
 
-      // Organizations are not tenant-scoped. Tenant-owned rows must be created
-      // through the same transaction-local RLS context used by production code.
-      await prisma.organization.upsert({
-        where: { id: orgId },
-        update: {},
-        create: { id: orgId, name: "E2E Org", plan: "trial" }
-      });
-
-      await withTenant(prisma, orgId, async (tx) => {
-        const db = tx as PrismaClient;
-        await db.user.upsert({
-          where: { id: userId },
-          update: {},
-          create: {
-            id: userId,
-            orgId,
-            name: "E2E User",
-            email: "e2e@example.com",
-            role: "org_admin"
-          }
-        });
-      });
+    // The application connection intentionally runs as bta_app and must never
+    // bypass RLS. Test fixture creation is a separate privileged setup concern.
+    const adminUrl = process.env.DATABASE_ADMIN_URL;
+    if (!adminUrl) {
+      throw new Error("DATABASE_ADMIN_URL is required for Golden Path fixture setup; never bypass RLS with the application connection.");
     }
+
+    prisma = new PrismaClient({ datasources: { db: { url: adminUrl } } });
+    await prisma.organization.upsert({
+      where: { id: orgId },
+      update: {},
+      create: { id: orgId, name: "E2E Org", plan: "trial" }
+    });
+
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: { orgId, name: "E2E User", role: "org_admin" },
+      create: {
+        id: userId,
+        orgId,
+        name: "E2E User",
+        email: "e2e@example.com",
+        role: "org_admin"
+      }
+    });
   });
 
   afterAll(async () => {
-    if (prisma) await prisma.$disconnect();
+    await prisma?.$disconnect();
   });
 
   it("should execute the full golden path: Org -> Workspace -> Project -> Document -> Chat -> Artifact -> Dashboard", async () => {
