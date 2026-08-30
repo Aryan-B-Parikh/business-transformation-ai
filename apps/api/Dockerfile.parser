@@ -9,10 +9,10 @@ RUN npm init -y && npm install express multer pdf-parse mammoth && npm install -
 
 # Copy sandbox code
 COPY src/parser-sandbox src/parser-sandbox
-COPY tsconfig.json ./
+COPY tsconfig.sandbox.json ./
 
 # Compile sandbox
-RUN npm install -g typescript && tsc -p tsconfig.json
+RUN npm install -g typescript && tsc -p tsconfig.sandbox.json
 
 # Change ownership
 RUN chown -R sandboxuser:sandboxgroup /app
