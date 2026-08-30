@@ -117,11 +117,6 @@ model Organization {
   name String
   plan OrgPlan @default(trial)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  maxProjects Int @default(10) @map("max_projects")
-  maxUsers Int @default(50) @map("max_users")
-  maxStorageMb Int @default(5000) @map("max_storage_mb")
-  aiTokenQuota Int @default(1000000) @map("ai_token_quota")
-  aiTokenUsed Int @default(0) @map("ai_token_used")
   users User[]
   workspaces Workspace[]
   @@map("organizations")

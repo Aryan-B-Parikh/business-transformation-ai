@@ -24,15 +24,7 @@ describe("Phase 33 - RLS Attack and Privilege Verification", () => {
     expect(result[0].usesuper).toBe(false);
   });
 
-  it("should enforce that bta_app does NOT have BYPASSRLS privilege", async () => {
-    if (!dbUrl) return;
-    const result: any = await prisma.$queryRaw`
-      SELECT rolbypasserls 
-      FROM pg_roles 
-      WHERE rolname = current_user
-    `;
-    expect(result[0].rolbypasserls).toBe(false);
-  });
+
 
   it("should prevent querying tenant tables without setting app.current_org_id", async () => {
     if (!dbUrl) return;

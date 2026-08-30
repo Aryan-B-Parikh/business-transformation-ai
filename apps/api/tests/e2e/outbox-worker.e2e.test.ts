@@ -38,7 +38,7 @@ describe("Phase 33 - Transactional Outbox and Worker E2E", () => {
       
       await tx.outboxEvent.create({
         data: {
-          id: "event-1",
+          id: "eeeeeeee-1111-1111-1111-111111111111",
           orgId,
           eventType: "project.created",
           payload: { projectId: "proj-outbox-test" },
@@ -49,7 +49,7 @@ describe("Phase 33 - Transactional Outbox and Worker E2E", () => {
 
     // Verify it was committed
     await withTenant(prisma, orgId, async (tx) => {
-      const event = await tx.outboxEvent.findUnique({ where: { id: "event-1" } });
+      const event = await tx.outboxEvent.findUnique({ where: { id: "eeeeeeee-1111-1111-1111-111111111111" } });
       expect(event).toBeDefined();
       expect(event?.status).toBe("pending");
     });
@@ -63,7 +63,7 @@ describe("Phase 33 - Transactional Outbox and Worker E2E", () => {
       await withTenant(prisma, orgId, async (tx) => {
         await tx.outboxEvent.create({
           data: {
-            id: "event-failed-tx",
+            id: "11111111-1111-1111-1111-111111111111",
             orgId,
             eventType: "project.created",
             payload: { projectId: "failed" },
@@ -80,8 +80,8 @@ describe("Phase 33 - Transactional Outbox and Worker E2E", () => {
 
     // Verify it was rolled back
     await withTenant(prisma, orgId, async (tx) => {
-      const event = await tx.outboxEvent.findUnique({ where: { id: "event-failed-tx" } });
-      expect(event).toBeNull();
+      const event = await tx.outboxEvent.findUnique({ where: { id: "11111111-1111-1111-1111-111111111111" } });
+      expect(event).toBeNull(); // Should be null because transaction was rolled back
     });
   });
 });
