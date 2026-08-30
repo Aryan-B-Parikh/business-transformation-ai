@@ -1,7 +1,7 @@
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { Request, Response, NextFunction } from "express";
 import helmet from "helmet";
-import cookieParser from "cookie-parser";
 import { i18nMiddleware } from "./middleware/i18n";
 import { traceMiddleware } from "./middleware/trace";
 import { openApiSpec } from "./openapi";
@@ -17,8 +17,8 @@ import exportRoutes from "./routes/exports";
 import journeyRoutes from "./routes/journey";
 import orgRoutes from "./routes/orgs";
 import webhookRoutes from "./routes/webhooks";
-import workspaceRoutes from "./routes/workspaces";
 import wellKnownRoutes from "./routes/well-known";
+import workspaceRoutes from "./routes/workspaces";
 
 export function createApp(): express.Express {
   const app = express();

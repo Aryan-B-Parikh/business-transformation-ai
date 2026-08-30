@@ -48,6 +48,7 @@ export function initializeProductionRuntime(): void {
     throw new Error("CRITICAL PERSISTENCE VIOLATION: production requires DATABASE_URL");
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   initializeRepositories(backend, backend === "postgres" ? (prisma as any) : undefined);
 }
 

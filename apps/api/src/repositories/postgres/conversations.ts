@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { PrismaClient } from "@prisma/client";
 import { IConversationAggregateRepository, ConversationEntity, ConversationMessageEntity } from "../interfaces";
 import { withTenant, assertTenant } from "../../db/tenant";

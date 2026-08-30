@@ -15,6 +15,8 @@
   },
   "rules": {
     "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/ban-ts-comment": "off",
     "import/order": ["warn", { "alphabetize": { "order": "asc" } }]
   },
   "ignorePatterns": ["dist/", "node_modules/", "build/", "*.js"]

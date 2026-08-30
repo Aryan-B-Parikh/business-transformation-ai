@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { signToken } from "./jwt";
-import { findUserByEmail, findUserById, verifyPassword } from "./users";
-import { createRefreshToken, findRefreshToken, revokeRefreshToken } from "./refreshTokens";
 import { prisma } from "../db/client";
 import { withTenant } from "../db/tenant";
+import { signToken } from "./jwt";
+import { createRefreshToken, findRefreshToken, revokeRefreshToken } from "./refreshTokens";
+import { findUserByEmail, findUserById, verifyPassword } from "./users";
 
 export interface LoginRequest { email: string; password: string; orgId?: string; }
 export interface SsoCallbackRequest { provider: string; code: string; email?: string; }

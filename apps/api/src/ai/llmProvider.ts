@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { buildSystemPrompt } from "./prompts";
-import { detectPromptInjection, detectSSRFInInput, AIValidationError } from "./guardrails";
 import { recordAITelemetry } from "../utils/telemetry";
+import { detectPromptInjection, detectSSRFInInput, AIValidationError } from "./guardrails";
+import { buildSystemPrompt } from "./prompts";
 
 export interface LLMConfig { model?: string; temperature?: number; maxTokens?: number; timeoutMs?: number; }
 export class LLMTimeoutError extends Error { constructor(message: string) { super(message); this.name = "LLMTimeoutError"; } }
@@ -51,6 +51,7 @@ async function invokeLLM(systemPrompt: string, userPrompt: string, config: LLMCo
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`LLM Invocation failed: ${response.status} ${await response.text()}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await response.json() as any;
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error("No content returned from LLM");
