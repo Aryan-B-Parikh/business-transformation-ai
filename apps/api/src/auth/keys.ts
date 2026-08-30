@@ -7,60 +7,49 @@ export interface KeyPair {
   jwk: Record<string, string>;
 }
 
-// In-memory key store
 let primaryKey: KeyPair | null = null;
 let previousKey: KeyPair | null = null;
 
 function extractJwk(publicKeyPem: string, kid: string): Record<string, string> {
   const key = crypto.createPublicKey(publicKeyPem);
   const jwk = key.export({ format: "jwk" }) as Record<string, string>;
-  return {
-    ...jwk,
-    kid,
-    alg: "RS256",
-    use: "sig",
-  };
+  return { ...jwk, kid, alg: "RS256", use: "sig" };
 }
 
-function loadOrGenerateKey(envPriv: string | undefined, kidFallback: string): KeyPair {
-  if (envPriv) {
-    const pub = crypto.createPublicKey(envPriv).export({ type: "spki", format: "pem" });
+function loadKey(envPriv: string | undefined, kid: string): KeyPair {
+  if (!envPriv) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(`Production JWT key is missing for kid=${kid}`);
+    }
+    const generated = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
     return {
-      kid: kidFallback,
-      privateKey: envPriv,
-      publicKey: pub as string,
-      jwk: extractJwk(pub as string, kidFallback),
+      kid,
+      privateKey: generated.privateKey as string,
+      publicKey: generated.publicKey as string,
+      jwk: extractJwk(generated.publicKey as string, kid),
     };
   }
 
-  // Generate ephemeral keys for local dev
-  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
-    modulusLength: 2048,
-    publicKeyEncoding: { type: "spki", format: "pem" },
-    privateKeyEncoding: { type: "pkcs8", format: "pem" },
-  });
-
-  return {
-    kid: kidFallback,
-    privateKey: privateKey as string,
-    publicKey: publicKey as string,
-    jwk: extractJwk(publicKey as string, kidFallback),
-  };
+  const publicKey = crypto.createPublicKey(envPriv).export({ type: "spki", format: "pem" }) as string;
+  return { kid, privateKey: envPriv, publicKey, jwk: extractJwk(publicKey, kid) };
 }
 
-export function initializeKeys() {
-  if (primaryKey) return; // Already initialized
-
-  if (process.env.NODE_ENV === "production") {
-    if (!process.env.JWT_PRIVATE_KEY) {
-      throw new Error("CRITICAL SECURITY INVARIANT VIOLATION: Production requires JWT_PRIVATE_KEY.");
-    }
+export function initializeKeys(): void {
+  if (primaryKey) return;
+  if (process.env.NODE_ENV === "production" && !process.env.JWT_PRIVATE_KEY) {
+    throw new Error("CRITICAL SECURITY INVARIANT VIOLATION: Production requires JWT_PRIVATE_KEY.");
   }
 
-  primaryKey = loadOrGenerateKey(process.env.JWT_PRIVATE_KEY, "primary-key-v1");
-  
+  const primaryKid = process.env.JWT_KEY_ID || "primary-key-v1";
+  primaryKey = loadKey(process.env.JWT_PRIVATE_KEY, primaryKid);
+
   if (process.env.JWT_PREVIOUS_PRIVATE_KEY) {
-    previousKey = loadOrGenerateKey(process.env.JWT_PREVIOUS_PRIVATE_KEY, "previous-key-v1");
+    const previousKid = process.env.JWT_PREVIOUS_KEY_ID || "previous-key-v1";
+    previousKey = loadKey(process.env.JWT_PREVIOUS_PRIVATE_KEY, previousKid);
   }
 }
 
@@ -78,7 +67,5 @@ export function getPublicKey(kid: string): string | null {
 
 export function getJwks(): { keys: Record<string, string>[] } {
   initializeKeys();
-  const keys = [primaryKey!.jwk];
-  if (previousKey) keys.push(previousKey.jwk);
-  return { keys };
+  return { keys: [primaryKey!.jwk, ...(previousKey ? [previousKey.jwk] : [])] };
 }

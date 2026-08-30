@@ -1,11 +1,12 @@
 /**
  * @bta/api — Core API Service
- * Owns: organizations, workspaces, projects, users, RBAC (02_TECHNICAL_ARCHITECTURE.md §2.1)
- * API surface documented in 04_API_SPEC.md
+ * Owns: organizations, workspaces, projects, users, RBAC.
  */
 
 import { API_BASE, requireOrgId } from "@bta/shared";
 import { createApp as createExpressApp } from "./app";
+import { prisma } from "./db/client";
+import { initializeRepositories } from "./repositories";
 
 export const SERVICE_NAME = "core-api";
 export const SERVICE_VERSION = "0.1.0";
@@ -20,13 +21,11 @@ export function getHealth(): HealthResponse {
   return { service: SERVICE_NAME, version: SERVICE_VERSION, status: "ok" };
 }
 
-// Tenant-scoped query helper — enforces org_id on every DB query (03_DATA_MODEL.md RLS note)
 export function tenantWhere(orgId: string | undefined, extra: Record<string, unknown> = {}) {
   const tenantId = requireOrgId(orgId);
   return { org_id: tenantId, ...extra };
 }
 
-// Real Express app (TASK-003+) — also keep legacy placeholder shape for backwards compat
 export function createApp() {
   return createExpressApp();
 }
@@ -34,10 +33,39 @@ export function createApp() {
 export { createExpressApp };
 export { openApiSpec } from "./openapi";
 
+/**
+ * Production startup is explicit: configure the persistence boundary before
+ * accepting traffic. Tests may call createApp() without initializing Prisma.
+ */
+export function initializeProductionRuntime(): void {
+  const production = process.env.NODE_ENV === "production";
+  const backend = (process.env.STORAGE_BACKEND || (production ? "" : "memory")) as "postgres" | "memory";
+
+  if (production && backend !== "postgres") {
+    throw new Error("CRITICAL SECURITY INVARIANT VIOLATION: production requires STORAGE_BACKEND=postgres");
+  }
+  if (production && !process.env.DATABASE_URL) {
+    throw new Error("CRITICAL PERSISTENCE VIOLATION: production requires DATABASE_URL");
+  }
+
+  initializeRepositories(backend, backend === "postgres" ? prisma : undefined);
+}
+
 if (require.main === module) {
+  initializeProductionRuntime();
   const app = createApp();
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`[${SERVICE_NAME}] v${SERVICE_VERSION} — listening on :${port} basePath=${API_BASE}`);
   });
+
+  const shutdown = async (signal: string) => {
+    console.log(`[${SERVICE_NAME}] received ${signal}; shutting down`);
+    server.close(async () => {
+      await prisma.$disconnect();
+      process.exit(0);
+    });
+  };
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
 }
