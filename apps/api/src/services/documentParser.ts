@@ -5,10 +5,8 @@ import pdfParse from "pdf-parse";
 
 export class ExtractionLimitError extends Error { constructor(message: string) { super(message); this.name = "ExtractionLimitError"; } }
 export class TimeoutError extends Error { constructor(message: string) { super(message); this.name = "TimeoutError"; } }
-
 export interface DocumentChunk { id: string; documentId: string; orgId: string; chunkText: string; embedding: number[]; pageRef: number | null; }
-const chunks = new Map<string, DocumentChunk[]>();
-const byId = new Map<string, DocumentChunk>();
+const chunks = new Map<string, DocumentChunk[]>(); const byId = new Map<string, DocumentChunk>();
 export function clearChunks(): void { chunks.clear(); byId.clear(); }
 export function getChunks(documentId: string): DocumentChunk[] { return chunks.get(documentId) || []; }
 export function getAllChunksByOrg(orgId: string): DocumentChunk[] { return [...chunks.values()].flat().filter(c => c.orgId === orgId); }
@@ -22,19 +20,14 @@ export function embed(text: string, dims = 1536): number[] {
 }
 export function cosineSimilarity(a: number[], b: number[]): number { if (a.length !== b.length) throw new Error("Vector dimension mismatch"); return a.reduce((s, v, i) => s + v * (b[i] ?? 0), 0); }
 
-async function extractDocx(buffer: Buffer): Promise<{ text: string; pages: number }> {
-  const result = await mammoth.extractRawText({ buffer });
-  return { text: result.value, pages: 1 };
-}
-async function extractPptx(buffer: Buffer): Promise<{ text: string; pages: number }> {
-  const zip = await JSZip.loadAsync(buffer);
-  const slides = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/i.test(n)).sort((a,b) => a.localeCompare(b, undefined, { numeric: true }));
+async function extractDocx(buffer: Buffer) { const result = await mammoth.extractRawText({ buffer }); return { text: result.value, pages: 1 }; }
+async function extractPptx(buffer: Buffer) {
+  const zip = await JSZip.loadAsync(buffer); const slides = Object.keys(zip.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/i.test(n)).sort((a,b) => a.localeCompare(b, undefined, { numeric: true }));
   const texts: string[] = [];
-  for (const name of slides) { const xml = await zip.files[name]!.async("text"); const values = [...xml.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)].map(m => m[1]!.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); texts.push(values.join(" ")); }
+  for (const name of slides) { const xml = await zip.files[name]!.async("text"); texts.push([...xml.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)].map(m => m[1]!.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")).join(" ")); }
   return { text: texts.join("\n\n"), pages: Math.max(1, slides.length) };
 }
-
-export async function extractText(buffer: Buffer, filename: string): Promise<{ text: string; pages: number }> {
+export async function extractText(buffer: Buffer, filename: string) {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".pdf")) { const r = await pdfParse(buffer); return { text: r.text, pages: r.numpages || 1 }; }
   if (lower.endsWith(".docx")) return extractDocx(buffer);
@@ -42,26 +35,17 @@ export async function extractText(buffer: Buffer, filename: string): Promise<{ t
   if (lower.endsWith(".txt")) return { text: buffer.toString("utf8"), pages: 1 };
   throw new Error("Unsupported document format");
 }
-
-export function chunkText(text: string, chunkSize = 1200, overlap = 150): { chunk: string; pageRef: number }[] {
+export function chunkText(text: string, chunkSize = 1200, overlap = 150) {
   if (!text.trim()) return []; const out: { chunk: string; pageRef: number }[] = []; let start = 0;
   while (start < text.length) { const end = Math.min(start + chunkSize, text.length); const chunk = text.slice(start, end).trim(); if (chunk) out.push({ chunk, pageRef: Math.max(1, Math.ceil((start + chunk.length / 2) / 3000)) }); if (end === text.length) break; start = end - overlap; }
   return out;
 }
-
 export async function processDocument(params: { documentId: string; orgId: string; buffer: Buffer; filename: string }): Promise<DocumentChunk[]> {
-  const { documentId, orgId, buffer, filename } = params;
-  if (buffer.length > 10 * 1024 * 1024) throw new ExtractionLimitError("Document buffer exceeds 10MB limit");
+  const { documentId, orgId, buffer, filename } = params; if (buffer.length > 10 * 1024 * 1024) throw new ExtractionLimitError("Document buffer exceeds 10MB limit");
   const timeoutMs = process.env.NODE_ENV === "test" && process.env.TEST_FAST_TIMEOUT ? Number(process.env.TEST_FAST_TIMEOUT) : 30000;
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const { text } = await extractText(buffer, filename);
-    if (text.length > 500000) throw new ExtractionLimitError("Extracted text exceeds 500,000 characters limit");
-    const pieces = chunkText(text); if (!pieces.length) throw new Error("No text extracted");
-    const result = pieces.map(({ chunkText: _, ...rest }) => rest as never); void result;
-    const produced: DocumentChunk[] = pieces.map(({ chunk, pageRef }) => ({ id: uuidv4(), documentId, orgId, chunkText: chunk, embedding: embed(chunk), pageRef }));
-    chunks.set(documentId, produced); for (const c of produced) byId.set(c.id, c); return produced;
-  } catch (e) { if (controller.signal.aborted) throw new TimeoutError(`Document processing timed out after ${timeoutMs}ms`); throw e; }
+  try { const { text } = await extractText(buffer, filename); if (text.length > 500000) throw new ExtractionLimitError("Extracted text exceeds 500,000 characters limit"); const pieces = chunkText(text); if (!pieces.length) throw new Error("No text extracted"); const produced = pieces.map(({ chunk, pageRef }) => ({ id: uuidv4(), documentId, orgId, chunkText: chunk, embedding: embed(chunk), pageRef })); chunks.set(documentId, produced); for (const c of produced) byId.set(c.id, c); return produced; }
+  catch (e) { if (controller.signal.aborted) throw new TimeoutError(`Document processing timed out after ${timeoutMs}ms`); throw e; }
   finally { clearTimeout(timer); }
 }
 export function getChunkById(id: string): DocumentChunk | undefined { return byId.get(id); }
