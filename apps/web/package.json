@@ -1,0 +1,30 @@
+{
+  "name": "@bta/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web frontend — React + TypeScript (see 02_TECHNICAL_ARCHITECTURE.md §7)",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run --coverage=false",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@bta/shared": "*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "jsdom": "^24.1.3",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.1"
+  }
+}

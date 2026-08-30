@@ -1,0 +1,26 @@
+{
+  "name": "@bta/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile app shell — Android/iOS (React Native) per 05_AGENT_TASK_BACKLOG.md TASK-029",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run --coverage=false",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@bta/shared": "*",
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.1"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@bta/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared types, constants, and utilities for Business Transformation AI",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint src --ext .ts",
+    "test": "echo \"No tests yet for @bta/shared\" && exit 0",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.5"
+  }
+}
