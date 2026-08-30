@@ -58,7 +58,7 @@ export async function processWebhookOutbox() {
       data: {
         status: newStatus,
         attempt_count,
-        error: errorMsg,
+        last_error: errorMsg,
       }
     });
     results.push(updated);
