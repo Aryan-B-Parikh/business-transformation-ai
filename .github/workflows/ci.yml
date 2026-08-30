@@ -49,6 +49,7 @@ jobs:
       - name: Run E2E Tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
+          DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
           STORAGE_BACKEND: postgres
           S3_ENDPOINT: http://localhost:9000
           S3_REGION: us-east-1
