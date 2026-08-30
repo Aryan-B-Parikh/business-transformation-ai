@@ -2,8 +2,8 @@ import express from "express";
 import mammoth from "mammoth";
 import multer from "multer";
 import os from "os";
-// @ts-expect-error
-import pdfParse from "pdf-parse";
+// @ts-ignore
+const pdfParse = require("pdf-parse");
 
 const app = express();
 const upload = multer({ 

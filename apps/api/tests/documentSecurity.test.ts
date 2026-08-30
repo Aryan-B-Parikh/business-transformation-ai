@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { processDocument, clearChunks, ExtractionLimitError, TimeoutError } from "../src/services/documentParser";
 import { v4 as uuidv4 } from "uuid";
 
@@ -7,6 +7,16 @@ describe("Phase 6: Document Processing Security", () => {
 
   beforeEach(() => {
     clearChunks();
+    global.fetch = vi.fn().mockImplementation(async (url: string, options: any) => {
+      if (process.env.TEST_SLOW_PARSER) {
+        await new Promise(resolve => setTimeout(resolve, Number(process.env.TEST_SLOW_PARSER)));
+      }
+      return {
+        ok: true,
+        json: async () => ({ content: "normal text content" }),
+        text: async () => ""
+      };
+    }) as any;
   });
 
   it("should throw ExtractionLimitError if buffer exceeds 10MB limit", async () => {
@@ -58,6 +68,7 @@ describe("Phase 6: Document Processing Security", () => {
 
     delete process.env.TEST_FAST_TIMEOUT;
     delete process.env.TEST_SLOW_PARSER;
+    vi.restoreAllMocks();
   });
 
   it("should process normally within bounds", async () => {
@@ -73,5 +84,6 @@ describe("Phase 6: Document Processing Security", () => {
 
     expect(chunks.length).toBeGreaterThan(0);
     expect(chunks[0].chunkText).toBe("normal text content");
+    vi.restoreAllMocks();
   });
 });

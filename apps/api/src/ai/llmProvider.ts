@@ -33,7 +33,7 @@ export async function generateStructuredCompletion<T>(systemInstruction: string,
   throw new AIValidationError(`Failed to validate LLM output after bounded repair attempts: ${String((lastError as Error)?.message || lastError)}`);
 }
 
-async function invokeLLM(systemPrompt: string, userPrompt: string, config: LLMConfig): Promise<Invocation> {
+export async function invokeLLM(systemPrompt: string, userPrompt: string, config: LLMConfig): Promise<Invocation> {
   const model = config.model || "gpt-4o-mini";
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
