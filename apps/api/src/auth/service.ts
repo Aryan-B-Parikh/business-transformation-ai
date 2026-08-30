@@ -1,164 +1,78 @@
-/**
- * Auth service — TASK-003
- * Implements POST /auth/login and POST /auth/sso/callback per 04_API_SPEC.md
- * JWT issuance with org_id/role claims; SSO via mock provider.
- */
-
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { signToken } from "./jwt";
 import { findUserByEmail, findUserById, verifyPassword } from "./users";
 import { createRefreshToken, findRefreshToken, revokeRefreshToken } from "./refreshTokens";
+import { prisma } from "../db/client";
+import { withTenant } from "../db/tenant";
 
-export interface LoginRequest {
-  email: string;
-  password: string;
+export interface LoginRequest { email: string; password: string; orgId?: string; }
+export interface SsoCallbackRequest { provider: string; code: string; email?: string; }
+export interface AuthResult { token: string; refreshToken?: string; user: { id: string; orgId: string; email: string; name: string; role: string }; }
+type UserRecord = { id: string; orgId: string; email: string; name: string; role: string; passwordHash?: string | null; ssoProvider?: string | null };
+function authError(message: string, status = 401, code = "UNAUTHORIZED") { const e = new Error(message) as Error & { status?: number; code?: string }; e.status = status; e.code = code; return e; }
+function issue(user: UserRecord, refreshToken?: string): AuthResult { return { token: signToken({ userId: user.id, orgId: user.orgId, role: user.role, email: user.email }), refreshToken, user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role } }; }
+function makeProductionRefreshToken(orgId: string) { return `${orgId}.${crypto.randomBytes(32).toString("hex")}`; }
+function splitProductionRefreshToken(value: string) { const i = value.indexOf("."); if (i < 1) throw authError("Invalid refresh token"); return { orgId: value.slice(0, i), secret: value.slice(i + 1) }; }
+
+async function productionUserByEmail(email: string, orgId: string): Promise<UserRecord | null> {
+  return withTenant(prisma as never, orgId, async (tx: unknown) => {
+    const rows = await (tx as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE org_id=$1::uuid AND lower(email)=lower($2) LIMIT 1", orgId, email);
+    return rows[0] ?? null;
+  });
 }
 
-export interface SsoCallbackRequest {
-  provider: string; // e.g. azure_ad, okta
-  code: string;     // OAuth code (mock: email encoded)
-  email?: string;   // for tests, allow direct email
-}
-
-export interface AuthResult {
-  token: string;
-  refreshToken?: string;
-  user: { id: string; orgId: string; email: string; name: string; role: string };
-}
-
-/**
- * Authenticate via email/password and return JWT.
- * Throws with status 401 on failure.
- */
 export async function login(req: LoginRequest): Promise<AuthResult> {
-  if (!req.email || !req.password) {
-    const err = new Error("email and password required") as Error & { status?: number };
-    err.status = 400;
-    throw err;
+  if (!req.email || !req.password) throw authError("email and password required", 400, "BAD_REQUEST");
+  if (process.env.NODE_ENV === "production") {
+    if (!req.orgId) throw authError("orgId is required for tenant-scoped authentication", 400, "ORG_ID_REQUIRED");
+    const user = await productionUserByEmail(req.email, req.orgId);
+    if (!user || !user.passwordHash || !(await bcrypt.compare(req.password, user.passwordHash))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+    const refreshToken = makeProductionRefreshToken(req.orgId), secret = refreshToken.slice(req.orgId.length + 1), hash = crypto.createHash("sha256").update(secret).digest("hex");
+    await withTenant(prisma as never, req.orgId, async (tx: unknown) => { await (tx as any).$executeRawUnsafe("INSERT INTO refresh_tokens (id,user_id,org_id,token_hash,expires_at) VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3,now()+interval '7 days')", user.id, req.orgId, hash); });
+    return issue(user, refreshToken);
   }
   const user = findUserByEmail(req.email);
-  if (!user) {
-    const err = new Error("Invalid credentials") as Error & { status?: number; code?: string };
-    err.status = 401;
-    err.code = "INVALID_CREDENTIALS";
-    throw err;
-  }
-  const ok = await verifyPassword(user, req.password);
-  if (!ok) {
-    const err = new Error("Invalid credentials") as Error & { status?: number; code?: string };
-    err.status = 401;
-    err.code = "INVALID_CREDENTIALS";
-    throw err;
-  }
-  const token = signToken({
-    userId: user.id,
-    orgId: user.orgId,
-    role: user.role,
-    email: user.email,
-  });
-  const { token: refreshTokenString } = createRefreshToken(user.id);
-  
-  return {
-    token,
-    refreshToken: refreshTokenString,
-    user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role },
-  };
+  if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+  return issue(user, createRefreshToken(user.id).token);
 }
 
-/**
- * SSO callback — mock: code is the user's email (or base64 email) for test simplicity.
- * Production would exchange code for provider profile via OIDC.
- */
 export async function ssoCallback(req: SsoCallbackRequest): Promise<AuthResult> {
-  if (!req.provider) {
-    const err = new Error("provider required") as Error & { status?: number };
-    err.status = 400;
-    throw err;
-  }
-  // Allow test to pass email directly, or decode code as email
+  if (process.env.NODE_ENV === "production") throw authError("SSO is not configured for this deployment", 503, "SSO_NOT_CONFIGURED");
+  if (!req.provider) throw authError("provider required", 400, "BAD_REQUEST");
   let email = req.email;
-  if (!email && req.code) {
-    try {
-      // try base64
-      const decoded = Buffer.from(req.code, "base64").toString("utf8");
-      email = decoded.includes("@") ? decoded : req.code;
-    } catch {
-      email = req.code;
-    }
-  }
-  if (!email) {
-    const err = new Error("code/email required") as Error & { status?: number };
-    err.status = 400;
-    throw err;
-  }
-  const user = findUserByEmail(email);
-  if (!user) {
-    const err = new Error("SSO user not found") as Error & { status?: number };
-    err.status = 401;
-    throw err;
-  }
-  // Optionally validate ssoProvider matches, but allow any for test
-  const token = signToken({
-    userId: user.id,
-    orgId: user.orgId,
-    role: user.role,
-    email: user.email,
-  });
-  const { token: refreshTokenString } = createRefreshToken(user.id);
-
-  return {
-    token,
-    refreshToken: refreshTokenString,
-    user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role },
-  };
+  if (!email && req.code) { try { const decoded = Buffer.from(req.code, "base64").toString("utf8"); email = decoded.includes("@") ? decoded : req.code; } catch { email = req.code; } }
+  if (!email) throw authError("code/email required", 400, "BAD_REQUEST");
+  const user = findUserByEmail(email); if (!user) throw authError("SSO user not found");
+  if (user.ssoProvider && user.ssoProvider !== req.provider) throw authError("SSO provider mismatch");
+  return issue(user, createRefreshToken(user.id).token);
 }
 
-/**
- * Refresh an access token using a valid refresh token.
- */
 export async function refreshAccessToken(refreshTokenStr: string): Promise<AuthResult> {
-  const rt = findRefreshToken(refreshTokenStr);
-  if (!rt) {
-    const err = new Error("Invalid refresh token") as Error & { status?: number };
-    err.status = 401;
-    throw err;
+  if (process.env.NODE_ENV === "production") {
+    const { orgId, secret } = splitProductionRefreshToken(refreshTokenStr);
+    const hash = crypto.createHash("sha256").update(secret).digest("hex");
+    return withTenant(prisma as never, orgId, async (tx: unknown) => {
+      const p = tx as any;
+      const rows = await p.$queryRawUnsafe("SELECT rt.id, rt.user_id AS \"userId\", rt.expires_at AS \"expiresAt\", u.org_id AS \"orgId\", u.email, u.name, u.role FROM refresh_tokens rt JOIN users u ON u.id=rt.user_id WHERE rt.token_hash=$1 AND rt.org_id=$2::uuid AND rt.revoked_at IS NULL LIMIT 1", hash, orgId);
+      const rt = rows[0]; if (!rt || new Date(rt.expiresAt) <= new Date()) throw authError("Refresh token expired or revoked");
+      await p.$executeRawUnsafe("UPDATE refresh_tokens SET revoked_at=now() WHERE id=$1::uuid AND revoked_at IS NULL", rt.id);
+      const next = makeProductionRefreshToken(orgId), nextHash = crypto.createHash("sha256").update(next.slice(orgId.length + 1)).digest("hex");
+      await p.$executeRawUnsafe("INSERT INTO refresh_tokens (id,user_id,org_id,token_hash,expires_at) VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3,now()+interval '7 days')", rt.userId, orgId, nextHash);
+      return issue({ id: rt.userId, orgId: rt.orgId, email: rt.email, name: rt.name, role: rt.role }, next);
+    });
   }
-  if (rt.revokedAt || rt.expiresAt < new Date()) {
-    const err = new Error("Refresh token expired or revoked") as Error & { status?: number };
-    err.status = 401;
-    throw err;
-  }
-  
-  const user = findUserById(rt.userId);
-  if (!user) {
-    const err = new Error("User not found") as Error & { status?: number };
-    err.status = 401;
-    throw err;
-  }
-
-  const token = signToken({
-    userId: user.id,
-    orgId: user.orgId,
-    role: user.role,
-    email: user.email,
-  });
-
-  return {
-    token,
-    user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role },
-  };
+  const rt = findRefreshToken(refreshTokenStr); if (!rt || rt.revokedAt || rt.expiresAt <= new Date()) throw authError("Refresh token expired or revoked");
+  const user = findUserById(rt.userId); if (!user) throw authError("User not found");
+  revokeRefreshToken(rt.id); return issue(user, createRefreshToken(user.id).token);
 }
 
-/**
- * Revoke a refresh token (Logout)
- */
 export async function logout(refreshTokenStr: string): Promise<void> {
-  const rt = findRefreshToken(refreshTokenStr);
-  if (rt) {
-    revokeRefreshToken(rt.id);
+  if (process.env.NODE_ENV === "production") {
+    const { orgId, secret } = splitProductionRefreshToken(refreshTokenStr), hash = crypto.createHash("sha256").update(secret).digest("hex");
+    await withTenant(prisma as never, orgId, async (tx: unknown) => { await (tx as any).$executeRawUnsafe("UPDATE refresh_tokens SET revoked_at=now() WHERE token_hash=$1 AND org_id=$2::uuid AND revoked_at IS NULL", hash, orgId); });
+    return;
   }
+  const rt = findRefreshToken(refreshTokenStr); if (rt) revokeRefreshToken(rt.id);
 }
-
-/** Helper for tests: get user by ID for sso */
-export function getUserById(id: string) {
-  return findUserById(id);
-}
+export function getUserById(id: string) { return findUserById(id); }
