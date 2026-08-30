@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-025 — Export service (PDF/DOCX/XLSX/PPTX)
  * DoD: Each format produces a file that opens without corruption and contains artifact's key sections
@@ -8,8 +9,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
-import { clearArtifacts } from "../src/stores/artifacts";
-import { clearExports } from "../src/stores/exports";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -25,9 +24,7 @@ describe("TASK-025: Export service", () => {
   let artifactId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearExports();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS Export ${Date.now()}` });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: `Proj Export ${Date.now()}` });

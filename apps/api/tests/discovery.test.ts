@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-010 — Discovery agent
  * DoD: Given scripted conversation fixture, agent asks clarifying question when info missing
@@ -12,8 +13,6 @@ import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { discoveryAsk } from "../src/services/discoveryAgent";
 import { clearChunks } from "../src/services/documentParser";
 import { clearStorage } from "../src/services/storage";
-import { clearConversations } from "../src/stores/conversations";
-import { clearDocuments } from "../src/stores/documents";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -24,9 +23,9 @@ async function login(): Promise<string> {
 }
 
 describe("TASK-010: Discovery agent (unit)", () => {
-  it("asks clarifying question when info missing (vague idea)", () => {
+  it("asks clarifying question when info missing (vague idea)", async () => {
     const history = [{ role: "user" as const, content: "I have an idea for something." }];
-    const result = discoveryAsk({ conversationHistory: history });
+    const result = await discoveryAsk({ conversationHistory: history });
     expect(result.type).toBe("question");
     if (result.type === "question") {
       expect(result.question.length).toBeGreaterThan(10);
@@ -34,19 +33,19 @@ describe("TASK-010: Discovery agent (unit)", () => {
     }
   });
 
-  it("asks clarifying question when only one user message", () => {
-    const history = [{ role: "user" as const, content: "We want to improve." }];
-    const result = discoveryAsk({ conversationHistory: history });
+  it("asks clarifying question when only one user message", async () => {
+    const history = [{ role: "user" as const, content: "We want to improve our dashboard" }];
+    const result = await discoveryAsk({ conversationHistory: history });
     expect(result.type).toBe("question");
   });
 
-  it("produces structured summary when sufficient info gathered", () => {
+  it("produces structured summary when sufficient info gathered", async () => {
     const history = [
       { role: "user" as const, content: "Our goal is to increase revenue and improve efficiency via automation." },
       { role: "ai" as const, content: "What challenges are you facing?" },
       { role: "user" as const, content: "Challenges: manual payment validation, bottleneck in order capture. Processes: order capture, payment, invoice. Stakeholders: Sales, Finance, IT. We have SOP docs." },
     ];
-    const result = discoveryAsk({ conversationHistory: history, projectId: "proj-1", orgId: "org-1", ragContext: ["SOP content"] });
+    const result = await discoveryAsk({ conversationHistory: history, projectId: "p1", orgId: "orgA", ragContext: ["SOP content"] });
     expect(result.type).toBe("summary");
     if (result.type === "summary") {
       expect(result.summary).toBeDefined();
@@ -58,8 +57,8 @@ describe("TASK-010: Discovery agent (unit)", () => {
     }
   });
 
-  it("handles empty history → asks initial question", () => {
-    const result = discoveryAsk({ conversationHistory: [] });
+  it("handles empty history → asks initial question", async () => {
+    const result = await discoveryAsk({ conversationHistory: [] });
     expect(result.type).toBe("question");
   });
 });
@@ -68,11 +67,7 @@ describe("TASK-010: Discovery agent via API (POST /ai/v1/discovery/ask)", () => 
   let token: string;
 
   beforeEach(async () => {
-    clearConversations();
-    clearDocuments();
-    clearChunks();
-    clearStorage();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login();
   });
 

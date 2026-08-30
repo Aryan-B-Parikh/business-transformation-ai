@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-016 — Database & Integration Designer agent
  * DoD: Generated schema is valid SQL DDL (parses without error); API spec is valid OpenAPI
@@ -10,7 +11,6 @@ import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { validateDataModeling } from "../src/services/dataModelingAgent";
 import { isValidSvg, renderToSvg } from "../src/services/diagramRenderer";
-import { clearArtifacts } from "../src/stores/artifacts";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -25,8 +25,7 @@ describe("TASK-016: Database & Integration Designer", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS Data ${Date.now()}` });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: `Proj Data ${Date.now()}` });

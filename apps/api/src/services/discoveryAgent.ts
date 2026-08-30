@@ -92,14 +92,14 @@ If there is sufficient information, output a 'summary' type with the populated f
     if (history.filter((m) => m.role === "user").length < 2) missing.push("more conversation depth");
     
     if (missing.length > 0) {
-      if (lang === "es") return { type: "question", question: "ES_MOCK_QUESTION", reason: "MOCK" };
+      if (lang === "es") return { type: "question", question: "[es] ES_MOCK_QUESTION", reason: "MOCK" };
       return { type: "question", question: localize("Could you elaborate on " + missing[0] + "?"), reason: "Missing " + missing[0] };
     }
 
     if (lang === "ja") {
       return { 
         type: "summary", 
-        summary: "JA_MOCK_SUMMARY", 
+        summary: "[ja] JA_MOCK_SUMMARY", 
         structured: { businessGoals: [], challenges: [], processes: [], stakeholders: [], recommendations: [], maturity: { current: "1", future: "2" } }
       };
     }

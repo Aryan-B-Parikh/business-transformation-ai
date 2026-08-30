@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-028 — Admin dashboard (users/orgs/AI models/audit/usage)
  * DoD: Admin can view audit logs filtered by actor/date, toggle an AI model config, and see usage metrics
@@ -8,9 +9,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { getSeedPlainPassword, ORG_A } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
-import { clearAiModelConfigs } from "../src/stores/aiModelConfigs";
-import { clearArtifacts } from "../src/stores/artifacts";
-import { clearAuditLogs } from "../src/stores/auditLogs";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -29,10 +27,7 @@ describe("TASK-028: Admin dashboard", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearAuditLogs();
-    clearAiModelConfigs();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     adminToken = await loginAsOrgAdmin();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${adminToken}`).send({ name: `WS Admin ${Date.now()}` });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${adminToken}`).send({ name: `Proj Admin ${Date.now()}` });

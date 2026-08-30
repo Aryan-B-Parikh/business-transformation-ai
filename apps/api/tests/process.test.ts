@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-015 — Process Intelligence Designer agent
  * DoD: Output validates against BPMN JSON schema; renders via TASK-018
@@ -10,7 +11,6 @@ import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { isValidSvg, renderToSvg } from "../src/services/diagramRenderer";
 import { validateBpmnJson } from "../src/services/processAgent";
-import { clearArtifacts } from "../src/stores/artifacts";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -25,8 +25,7 @@ describe("TASK-015: Process Intelligence Designer", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS Proc ${Date.now()}` });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: `Proj Proc ${Date.now()}` });

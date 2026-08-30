@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-019 — Web UI Artifact viewer/editor
  * DoD: User can view an architecture artifact, edit a text field, save, and see version increment
@@ -9,8 +10,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
-import { clearArtifacts } from "../src/stores/artifacts";
-import { clearConversations } from "../src/stores/conversations";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -26,9 +25,7 @@ describe("TASK-019: Artifact viewer/editor + versioning", () => {
   let artifactId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearWorkspaces();
-    clearConversations();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS Art ${Date.now()}` });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: `Proj Art ${Date.now()}` });
@@ -62,7 +59,7 @@ describe("TASK-019: Artifact viewer/editor + versioning", () => {
     expect(patched.status).toBe(200);
     expect(patched.body.title).toBe("Edited Architecture Title");
     expect(patched.body.version).toBe(2);
-    expect(patched.body.parentArtifactId).toBe(artifactId);
+    expect(patched.body.parent_id).toBe(artifactId);
 
     // Fetch versions
     const versions = await request(app).get(`/api/v1/artifacts/${artifactId}/versions`).set("Authorization", `Bearer ${token}`);

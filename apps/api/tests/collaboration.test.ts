@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-023 — Comments & approvals
  * DoD: Two seeded users can comment/approve on same artifact; audit log entry created for approval
@@ -9,11 +10,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
-import { clearApprovals } from "../src/stores/approvals";
-import { clearArtifacts } from "../src/stores/artifacts";
-import { clearAuditLogs, listAuditLogs } from "../src/stores/auditLogs";
-import { clearComments } from "../src/stores/comments";
-import { clearNotifications, listNotifications } from "../src/stores/notifications";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -40,12 +36,7 @@ describe("TASK-023: Comments & approvals", () => {
   let artifactId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearComments();
-    clearApprovals();
-    clearAuditLogs();
-    clearNotifications();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     tokenA = await login("org_admin@org-a.com");
     tokenB = await login("contributor@org-a.com");
     const proj = await createProject(tokenA);
@@ -67,7 +58,7 @@ describe("TASK-023: Comments & approvals", () => {
 
   it("Commenting triggers notification for artifact creator (TASK-026)", async () => {
     // Artifact created by tokenA (org_admin), comment by tokenB should notify tokenA's user
-    const before = listNotifications("11111111-1111-1111-1111-111111111111", "00000000-0000-0000-0000-0000000000aa");
+    const before = (await getRepositories().collaboration.listNotifications("00000000-0000-0000-0000-0000000000aa", "11111111-1111-1111-1111-111111111111", "00000000-0000-0000-0000-0000000000aa"));
     await request(app).post(`/api/v1/artifacts/${artifactId}/comments`).set("Authorization", `Bearer ${tokenB}`).send({ content: "Notify creator" });
     // Notifications may be for creator (org_admin) - check via API
     const notifRes = await request(app).get("/api/v1/notifications").set("Authorization", `Bearer ${tokenA}`);

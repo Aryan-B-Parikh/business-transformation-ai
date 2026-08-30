@@ -385,6 +385,14 @@ export class MemoryDocumentRepository implements IDocumentAggregateRepository {
     }
     return allChunks.slice(0, topK).map((c, i) => ({ ...c, score: 0.9 - i * 0.05 }));
   }
+
+  async deleteDocument(orgId: string, id: string): Promise<void> {
+    requireOrgId(orgId);
+    const doc = this.documents.get(id);
+    if (!doc || doc.orgId !== orgId) throw new Error("Not found");
+    this.documents.delete(id);
+    this.chunks.delete(id);
+  }
 }
 
 export class MemoryCollaborationRepository implements ICollaborationAggregateRepository {

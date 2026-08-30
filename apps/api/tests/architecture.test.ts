@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-014 — Solution Architecture Builder agent
  * DoD: Given fixture input, returns valid content schema; diagram_spec renders without error in TASK-018
@@ -10,8 +11,6 @@ import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { validateArchitectureContent } from "../src/services/architectureAgent";
 import { renderToSvg, isValidSvg } from "../src/services/diagramRenderer";
-import { clearArtifacts, getArtifact } from "../src/stores/artifacts";
-import { clearConversations } from "../src/stores/conversations";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -26,9 +25,7 @@ describe("TASK-014: Architecture Builder", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearWorkspaces();
-    clearConversations();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS Arch ${Date.now()}` });
     const wsId = ws.body.id;
@@ -50,7 +47,7 @@ describe("TASK-014: Architecture Builder", () => {
     const svg = renderToSvg(res.body.content.diagramSpec);
     expect(isValidSvg(svg)).toBe(true);
     expect(svg).toContain("<svg");
-    const stored = getArtifact(res.body.artifactId);
+    const stored = (await getRepositories().artifacts.findById("00000000-0000-0000-0000-0000000000aa", res.body.artifactId));
     expect(stored).toBeDefined();
     expect(stored!.status).toBe("draft");
   });

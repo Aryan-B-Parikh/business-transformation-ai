@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-008 — RAG retrieval service
  * DoD: Unit test with seeded chunks returns expected top-k ordering; cross-tenant leakage test proves isolation
@@ -11,7 +12,6 @@ import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { clearChunks, processDocument } from "../src/services/documentParser";
 import { retrieveRag } from "../src/services/rag";
 import { clearStorage } from "../src/services/storage";
-import { clearDocuments, createDocument, getDocIdsForProject } from "../src/stores/documents";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -28,23 +28,20 @@ describe("TASK-008: RAG retrieval service — unit", () => {
   const projB = "proj-rag-b";
 
   beforeEach(() => {
-    clearChunks();
-    clearDocuments();
-    clearWorkspaces();
-    clearStorage();
-  });
+    resetRepositoriesForTests();
+    });
 
   it("retrieveRag — returns top-k ordered by cosine similarity", async () => {
     // Seed project A with 3 docs, each with distinct content
-    const doc1 = createDocument({ projectId: projA, orgId: orgA, filename: "doc1.pdf", type: "pdf", storageUrl: "m://1", fileId: "f1", parsedStatus: "pending", uploadedBy: "u" });
-    const doc2 = createDocument({ projectId: projA, orgId: orgA, filename: "doc2.pdf", type: "pdf", storageUrl: "m://2", fileId: "f2", parsedStatus: "pending", uploadedBy: "u" });
-    const doc3 = createDocument({ projectId: projA, orgId: orgA, filename: "doc3.pdf", type: "pdf", storageUrl: "m://3", fileId: "f3", parsedStatus: "pending", uploadedBy: "u" });
+    const doc1 = await getRepositories().documents.createDocument(orgA, projA, { filename: "doc1.pdf", docType: "pdf", fileSize: 100, storageKey: "m://1" });
+    const doc2 = await getRepositories().documents.createDocument(orgA, projA, { filename: "doc2.pdf", docType: "pdf", fileSize: 100, storageKey: "m://2" });
+    const doc3 = await getRepositories().documents.createDocument(orgA, projA, { filename: "doc3.pdf", docType: "pdf", fileSize: 100, storageKey: "m://3" });
 
     await processDocument({ documentId: doc1.id, orgId: orgA, buffer: Buffer.from("digital transformation and AI adoption roadmap for cloud migration"), filename: "doc1.pdf" });
     await processDocument({ documentId: doc2.id, orgId: orgA, buffer: Buffer.from("cooking recipes and kitchen automation not related to business"), filename: "doc2.pdf" });
     await processDocument({ documentId: doc3.id, orgId: orgA, buffer: Buffer.from("business process automation with RPA and BPMN workflows"), filename: "doc3.pdf" });
 
-    const docIds = getDocIdsForProject(projA);
+    const docIds = new Set((await getRepositories().documents.listDocumentsByProject(orgA, projA)).map((d: any) => d.id));
     // Query about cloud migration — should rank doc1 highest
     const results = retrieveRag({ projectId: projA, orgId: orgA, query: "cloud migration AI roadmap", k: 3, docIdsForProject: docIds });
     expect(results).toHaveLength(3);
@@ -67,9 +64,9 @@ describe("TASK-008: RAG retrieval service — unit", () => {
   });
 
   it("retrieveRag — respects k limit", async () => {
-    const doc = createDocument({ projectId: projA, orgId: orgA, filename: "doc.pdf", type: "pdf", storageUrl: "m://x", fileId: "fx", parsedStatus: "pending", uploadedBy: "u" });
+    const doc = await getRepositories().documents.createDocument(orgA, projA, { filename: "doc.pdf", docType: "pdf", fileSize: 100, storageKey: "m://x" });
     await processDocument({ documentId: doc.id, orgId: orgA, buffer: Buffer.from("word ".repeat(1000)), filename: "doc.pdf" });
-    const docIds = getDocIdsForProject(projA);
+    const docIds = new Set((await getRepositories().documents.listDocumentsByProject(orgA, projA)).map((d: any) => d.id));
     const r1 = retrieveRag({ projectId: projA, orgId: orgA, query: "word", k: 1, docIdsForProject: docIds });
     const r2 = retrieveRag({ projectId: projA, orgId: orgA, query: "word", k: 2, docIdsForProject: docIds });
     expect(r1).toHaveLength(1);
@@ -78,13 +75,13 @@ describe("TASK-008: RAG retrieval service — unit", () => {
   });
 
   it("Cross-tenant leakage test — query as orgA must not see orgB chunks (TASK-002+ isolation requirement)", async () => {
-    const docA = createDocument({ projectId: projA, orgId: orgA, filename: "a.pdf", type: "pdf", storageUrl: "m://a", fileId: "fa", parsedStatus: "pending", uploadedBy: "u" });
-    const docB = createDocument({ projectId: projB, orgId: orgB, filename: "b.pdf", type: "pdf", storageUrl: "m://b", fileId: "fb", parsedStatus: "pending", uploadedBy: "u2" });
+    const docA = await getRepositories().documents.createDocument(orgA, projA, { filename: "a.pdf", docType: "pdf", fileSize: 100, storageKey: "m://a" });
+    const docB = await getRepositories().documents.createDocument(orgB, projB, { filename: "b.pdf", docType: "pdf", fileSize: 100, storageKey: "m://b" });
     await processDocument({ documentId: docA.id, orgId: orgA, buffer: Buffer.from("org A secret content about transformation"), filename: "a.pdf" });
     await processDocument({ documentId: docB.id, orgId: orgB, buffer: Buffer.from("org B secret content about transformation"), filename: "b.pdf" });
 
-    const docIdsA = getDocIdsForProject(projA);
-    const docIdsB = getDocIdsForProject(projB);
+    const docIdsA = new Set((await getRepositories().documents.listDocumentsByProject(orgA, projA)).map((d: any) => d.id));
+    const docIdsB = new Set((await getRepositories().documents.listDocumentsByProject(orgA, projB)).map((d: any) => d.id));
 
     const asA = retrieveRag({ projectId: projA, orgId: orgA, query: "secret transformation", k: 5, docIdsForProject: docIdsA });
     const asB = retrieveRag({ projectId: projB, orgId: orgB, query: "secret transformation", k: 5, docIdsForProject: docIdsB });

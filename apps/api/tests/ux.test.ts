@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-017 — AI UX Designer agent
  * DoD: Output renders as low-fidelity wireframe images via TASK-018
@@ -10,7 +11,6 @@ import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { isValidSvg, renderToSvg } from "../src/services/diagramRenderer";
 import { validateUx } from "../src/services/uxAgent";
-import { clearArtifacts } from "../src/stores/artifacts";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -25,8 +25,7 @@ describe("TASK-017: AI UX Designer", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS UX ${Date.now()}` });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: `Proj UX ${Date.now()}` });

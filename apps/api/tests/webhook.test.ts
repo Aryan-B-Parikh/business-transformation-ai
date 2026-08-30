@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-027 — Enterprise API integration framework (webhooks)
  * DoD: Configuring a webhook URL and approving an artifact triggers a POST to that URL with artifact payload
@@ -8,8 +9,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
-import { clearArtifacts } from "../src/stores/artifacts";
-import { clearWebhooks } from "../src/stores/webhooks";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -26,9 +25,7 @@ describe("TASK-027: Webhook integration", () => {
   let artifactId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearWebhooks();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login("org_admin@org-a.com");
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS Webhook ${Date.now()}` });
     workspaceId = ws.body.id;
@@ -50,7 +47,10 @@ describe("TASK-027: Webhook integration", () => {
 
   it("Approving artifact triggers webhook delivery (DoD)", async () => {
     await request(app).post(`/api/v1/workspaces/${workspaceId}/webhooks`).set("Authorization", `Bearer ${token}`).send({ url: "https://example.com/hook", events: ["artifact.approved"] });
-    const approve = await request(app).post(`/api/v1/artifacts/${artifactId}/approve`).set("Authorization", `Bearer ${token}`).send({ decision: "approved" });
+    // First, set artifact to in_review so it can be approved
+    const versionRes = await request(app).patch(`/api/v1/artifacts/${artifactId}`).set("Authorization", `Bearer ${token}`).send({ status: "in_review", change_reason: "Review requested" });
+    const newId = versionRes.body.id;
+    const approve = await request(app).post(`/api/v1/artifacts/${newId}/approve`).set("Authorization", `Bearer ${token}`).send({ decision: "approved" });
     expect(approve.status).toBe(201);
     // Check deliveries
     const deliveries = await request(app).get("/api/v1/webhooks/deliveries").set("Authorization", `Bearer ${token}`);
@@ -58,7 +58,7 @@ describe("TASK-027: Webhook integration", () => {
     expect(deliveries.body.data.length).toBeGreaterThanOrEqual(1);
     const d = deliveries.body.data.find((x: { event: string }) => x.event === "artifact.approved");
     expect(d).toBeDefined();
-    expect(d.payload.artifactId).toBe(artifactId);
+    expect(d.payload.artifactId).toBe(newId);
     expect(d.payload.projectId).toBe(projectId);
   });
 

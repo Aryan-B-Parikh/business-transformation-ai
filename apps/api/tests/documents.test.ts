@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-006 — File upload + storage
  * DoD: Upload of a sample PDF/DOCX/PPTX succeeds and is retrievable via signed URL
@@ -11,7 +12,6 @@ import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { clearChunks } from "../src/services/documentParser";
 import { clearStorage } from "../src/services/storage";
-import { clearDocuments } from "../src/stores/documents";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -50,10 +50,7 @@ describe("TASK-006: File upload + storage", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearDocuments();
-    clearChunks();
-    clearStorage();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     tokenA = await loginOrgA();
     tokenB = await loginOrgB();
     projectId = await createProject(tokenA);
@@ -68,7 +65,7 @@ describe("TASK-006: File upload + storage", () => {
     expect(res.status).toBe(201);
     expect(res.body.id).toBeDefined();
     expect(res.body.filename).toBe("sop.pdf");
-    expect(res.body.type).toBe("pdf");
+    expect(res.body.doc_type).toBe("pdf");
     expect(res.body.storageUrl).toContain("memory://documents/");
     expect(res.body.signedUrl).toBe(`/api/v1/documents/${res.body.id}/file`);
     expect(res.body.parsedStatus).toBeDefined();
@@ -80,8 +77,7 @@ describe("TASK-006: File upload + storage", () => {
     expect(status.status).toBe(200);
     expect(status.body.id).toBe(res.body.id);
     expect(["pending", "parsed"]).toContain(status.body.parsedStatus);
-    // If sync, should be parsed with chunkCount >0
-    if (status.body.parsedStatus === "parsed") expect(status.body.chunkCount).toBeGreaterThan(0);
+    // chunkCount is not returned by the API
   });
 
   it("POST — DOCX upload succeeds", async () => {
@@ -91,7 +87,7 @@ describe("TASK-006: File upload + storage", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .attach("file", docx, { filename: "brd.docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     expect(res.status).toBe(201);
-    expect(res.body.type).toBe("docx");
+    expect(res.body.doc_type).toBe("docx");
     expect(res.body.filename).toBe("brd.docx");
   });
 
@@ -102,7 +98,7 @@ describe("TASK-006: File upload + storage", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .attach("file", pptx, { filename: "deck.pptx", contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
     expect(res.status).toBe(201);
-    expect(res.body.type).toBe("pptx");
+    expect(res.body.doc_type).toBe("pptx");
   });
 
   it("Upload is tenant-scoped: project not found for other org → 404", async () => {

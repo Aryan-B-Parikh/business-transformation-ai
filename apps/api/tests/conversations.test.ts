@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-009 — Conversation service
  * DoD: End-to-end test: create conversation → send message → AI reply persisted and returned
@@ -10,8 +11,6 @@ import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { clearChunks } from "../src/services/documentParser";
 import { clearStorage } from "../src/services/storage";
-import { clearConversations } from "../src/stores/conversations";
-import { clearDocuments } from "../src/stores/documents";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -32,11 +31,7 @@ describe("TASK-009: Conversation service", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearConversations();
-    clearDocuments();
-    clearChunks();
-    clearStorage();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login("org_admin@org-a.com");
     projectId = await createProject(token);
   });

@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-022 — Dashboard API + UI
  * DoD: Dashboard renders scores for a seeded project; history endpoint returns time series
@@ -8,10 +9,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
-import { clearArtifacts } from "../src/stores/artifacts";
-import { clearEffortEstimates } from "../src/stores/effortEstimates";
-import { clearMaturitySnapshots } from "../src/stores/maturitySnapshots";
-import { clearRoadmapItems } from "../src/stores/roadmapItems";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -26,11 +23,7 @@ describe("TASK-022: Dashboard API", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearRoadmapItems();
-    clearEffortEstimates();
-    clearMaturitySnapshots();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS Dash ${Date.now()}` });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: `Proj Dash ${Date.now()}` });
@@ -76,12 +69,12 @@ describe("TASK-022: Dashboard API", () => {
     expect(hist.body.data.length).toBeGreaterThanOrEqual(2);
     expect(hist.body.total).toBe(hist.body.data.length);
     // Each entry has capturedAt and scores
-    for (const s of hist.body.data as { digitalMaturityScore: number; capturedAt: string }[]) {
-      expect(typeof s.digitalMaturityScore).toBe("number");
-      expect(s.capturedAt).toBeDefined();
+    for (const s of hist.body.data as { digital_maturity: { overall: number }; calculated_at: string }[]) {
+      expect(typeof s.digital_maturity.overall).toBe("number");
+      expect(s.calculated_at).toBeDefined();
     }
-    // Sorted by capturedAt
-    const dates = (hist.body.data as { capturedAt: string }[]).map((d) => d.capturedAt);
+    // Sorted by calculated_at
+    const dates = (hist.body.data as { calculated_at: string }[]).map((d) => d.calculated_at);
     const sorted = [...dates].sort();
     expect(dates).toEqual(sorted);
   });

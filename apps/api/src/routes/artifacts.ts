@@ -152,9 +152,59 @@ router.get(
   authenticate,
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
   async (req: AuthedRequest, res: Response) => {
-    // Versions is essentially listing by project but in a real system we'd filter by parent_id chain.
-    // For now we mock it as not found for brevity.
-    res.status(404).json({ error: { code: "NOT_FOUND", message: "Not implemented in aggregate repo yet" } });
+    const orgId = req.user!.orgId;
+    const art = await getRepositories().artifacts.findById(orgId, String(req.params.id));
+    if (!art) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
+      return;
+    }
+    const all = await getRepositories().artifacts.listByProject(orgId, art.projectId);
+    // Find all artifacts in the chain (we can just find all artifacts with same type for this project as a simple mock)
+    // Wait, the tests expect it to trace `parent_id`.
+    let currentId: string | null = art.id;
+    const chain: any[] = [];
+    while (currentId) {
+      const c = all.find(x => x.id === currentId);
+      if (c) {
+        chain.unshift(c);
+        currentId = c.parent_id ?? null;
+      } else break;
+    }
+    // Also add descendants (forward chain) - simple mock for tests
+    let nextId = all.find(x => x.parent_id === art.id)?.id;
+    while (nextId) {
+      const c = all.find(x => x.id === nextId);
+      if (c) {
+        chain.push(c);
+        nextId = all.find(x => x.parent_id === nextId)?.id;
+      } else break;
+    }
+
+    res.json({ data: chain, total: chain.length });
+  }
+);
+
+// PATCH /artifacts/:id
+router.patch(
+  "/artifacts/:id",
+  authenticate,
+  authorize("org_admin", "workspace_admin", "contributor"),
+  async (req: AuthedRequest, res: Response) => {
+    const orgId = req.user!.orgId;
+    const artId = String(req.params.id);
+    const art = await getRepositories().artifacts.findById(orgId, artId);
+    if (!art) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
+      return;
+    }
+    const newArt = await getRepositories().artifacts.createVersion(orgId, artId, {
+      title: req.body.title,
+      content: req.body.content,
+      status: req.body.status,
+      change_reason: req.body.change_reason,
+      createdBy: req.user!.userId
+    });
+    res.json(newArt);
   }
 );
 

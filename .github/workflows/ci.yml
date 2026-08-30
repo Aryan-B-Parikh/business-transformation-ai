@@ -43,7 +43,7 @@ jobs:
       - name: Verify Migrations
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
-        run: npx prisma migrate deploy
+        run: cd apps/api && npx prisma migrate deploy
       - name: Run E2E Tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public

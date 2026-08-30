@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-007 — Document parsing pipeline
  * DoD: Given a sample SOP PDF, worker produces >0 chunks with non-null embeddings within 60s; parsedStatus becomes parsed
@@ -5,17 +6,15 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { clearChunks, chunkText, embed, extractText, getChunks, processDocument } from "../src/services/documentParser";
-import { clearDocuments, createDocument } from "../src/stores/documents";
 
 describe("TASK-007: Document parsing pipeline", () => {
   beforeEach(() => {
-    clearChunks();
-    clearDocuments();
-  });
+    resetRepositoriesForTests();
+    });
 
-  it("extractText — extracts from PDF buffer", () => {
+  it("extractText — extracts from PDF buffer", async () => {
     const buf = Buffer.from("%PDF-1.4\nSOP Business Process: Order to Cash. Automation opportunities.\n%%EOF");
-    const { text, pages } = extractText(buf, "sop.pdf");
+    const { text, pages } = await extractText(buf, "sop.pdf");
     expect(text.length).toBeGreaterThan(10);
     expect(text).toContain("SOP");
     expect(pages).toBeGreaterThanOrEqual(1);
@@ -63,16 +62,7 @@ describe("TASK-007: Document parsing pipeline", () => {
       Stakeholders: Sales, Finance, IT. Risks: payment failure, compliance.
     `.repeat(5);
     const buffer = Buffer.from(`%PDF-1.4\n${content}\n%%EOF`);
-    const doc = createDocument({
-      projectId: "proj-1",
-      orgId: "00000000-0000-0000-0000-0000000000aa",
-      filename: "sop.pdf",
-      type: "pdf",
-      storageUrl: "memory://documents/x/sop.pdf",
-      fileId: "x",
-      parsedStatus: "pending",
-      uploadedBy: "user-1",
-    });
+    const doc = await getRepositories().documents.createDocument("00000000-0000-0000-0000-0000000000aa", "proj-1", { filename: "sop.pdf", docType: "pdf", fileSize: 100, storageKey: "memory://documents/x/sop.pdf" });
     const chunks = await processDocument({ documentId: doc.id, orgId: doc.orgId, buffer, filename: doc.filename });
     const elapsed = Date.now() - start;
     expect(elapsed).toBeLessThan(60000); // within 60s DoD
@@ -92,16 +82,7 @@ describe("TASK-007: Document parsing pipeline", () => {
 
   it("processDocument — handles DOCX and PPTX as well", async () => {
     const docxBuf = Buffer.from("BRD: System shall support REST API integration with S3 storage.");
-    const doc = createDocument({
-      projectId: "proj-1",
-      orgId: "00000000-0000-0000-0000-0000000000aa",
-      filename: "brd.docx",
-      type: "docx",
-      storageUrl: "memory://x",
-      fileId: "y",
-      parsedStatus: "pending",
-      uploadedBy: "u",
-    });
+    const doc = await getRepositories().documents.createDocument("00000000-0000-0000-0000-0000000000aa", "proj-1", { filename: "brd.docx", docType: "docx", fileSize: 100, storageKey: "memory://x" });
     const chunks = await processDocument({ documentId: doc.id, orgId: doc.orgId, buffer: docxBuf, filename: doc.filename });
     expect(chunks.length).toBeGreaterThan(0);
     expect(chunks[0]!.embedding).toHaveLength(1536);
@@ -110,24 +91,12 @@ describe("TASK-007: Document parsing pipeline", () => {
   it("Integration via API — upload then status becomes parsed with chunks (simulates worker)", async () => {
     // This is covered in documents.test but we also check that parsedStatus updates via polling
     // Create doc pending, then run processDocument, check status logic
-    const doc = createDocument({
-      projectId: "proj-2",
-      orgId: "00000000-0000-0000-0000-0000000000bb",
-      filename: "test.pdf",
-      type: "pdf",
-      storageUrl: "memory://t",
-      fileId: "t",
-      parsedStatus: "pending",
-      uploadedBy: "u2",
-    });
+    const doc = await getRepositories().documents.createDocument("00000000-0000-0000-0000-0000000000bb", "proj-2", { filename: "test.pdf", docType: "pdf", fileSize: 100, storageKey: "memory://t" });
     expect(doc.parsedStatus).toBe("pending");
     const buf = Buffer.from("%PDF sample with automation and transformation content");
     const chunks = await processDocument({ documentId: doc.id, orgId: doc.orgId, buffer: buf, filename: doc.filename });
     expect(chunks.length).toBeGreaterThan(0);
-    // Simulate status update as route does
-    const { updateParsedStatus } = await import("../src/stores/documents");
-    updateParsedStatus(doc.id, "parsed");
-    const { getDocument } = await import("../src/stores/documents");
-    expect(getDocument(doc.id)!.parsedStatus).toBe("parsed");
+    await getRepositories().documents.updateParsedStatus(doc.orgId, doc.id, "parsed");
+    expect((await getRepositories().documents.findDocumentById(doc.orgId, doc.id))!.parsedStatus).toBe("parsed");
   });
 });

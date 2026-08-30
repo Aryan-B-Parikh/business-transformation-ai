@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-030 — i18n framework
  * DoD: Switching language changes UI strings and a test conversation returns AI replies in selected language
@@ -9,7 +10,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { getSeedPlainPassword } from "../src/auth/users";
 import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
-import { clearConversations } from "../src/stores/conversations";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -56,8 +56,7 @@ describe("TASK-030: AI responses in selected language", () => {
   let conversationId: string;
 
   beforeEach(async () => {
-    clearWorkspaces();
-    clearConversations();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS i18n ${Date.now()}` });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: `Proj i18n ${Date.now()}` });

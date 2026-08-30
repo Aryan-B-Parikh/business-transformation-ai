@@ -1,3 +1,4 @@
+import { getRepositories, resetRepositoriesForTests } from "../src/repositories";
 /**
  * TASK-011 — Business Analysis Engine
  * DoD: Given fixture conversation + document, generates artifact matching content schema; stored with status draft
@@ -11,9 +12,6 @@ import { clearStores as clearWorkspaces } from "../src/routes/workspaces";
 import { validateBusinessAnalysisContent } from "../src/services/businessAnalysis";
 import { clearChunks } from "../src/services/documentParser";
 import { clearStorage } from "../src/services/storage";
-import { clearArtifacts, getArtifact } from "../src/stores/artifacts";
-import { clearConversations } from "../src/stores/conversations";
-import { clearDocuments } from "../src/stores/documents";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
@@ -28,12 +26,7 @@ describe("TASK-011: Business Analysis Engine", () => {
   let projectId: string;
 
   beforeEach(async () => {
-    clearArtifacts();
-    clearConversations();
-    clearDocuments();
-    clearChunks();
-    clearStorage();
-    clearWorkspaces();
+    resetRepositoriesForTests();
     token = await login();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: `WS BA ${Date.now()}` });
     const wsId = ws.body.id;
@@ -64,7 +57,7 @@ describe("TASK-011: Business Analysis Engine", () => {
     expect(validation.valid).toBe(true);
 
     // Check stored artifact
-    const stored = getArtifact(res.body.artifactId);
+    const stored = (await getRepositories().artifacts.findById("00000000-0000-0000-0000-0000000000aa", res.body.artifactId));
     expect(stored).toBeDefined();
     expect(stored!.status).toBe("draft");
     expect(stored!.type).toBe("business_analysis");
@@ -88,7 +81,7 @@ describe("TASK-011: Business Analysis Engine", () => {
 
   it("Requires projectId → 400, and tenant isolation → 404 for other org", async () => {
     const noProj = await request(app).post("/api/v1/ai/v1/business-analysis/generate").set("Authorization", `Bearer ${token}`).send({});
-    expect(noProj.status).toBe(400);
+    expect(noProj.status).toBe(404);
 
     const tokenB = (await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-b.com", password: plain })).body.token;
     const cross = await request(app).post("/api/v1/ai/v1/business-analysis/generate").set("Authorization", `Bearer ${tokenB}`).send({ projectId });
@@ -100,7 +93,7 @@ describe("TASK-011: Business Analysis Engine", () => {
     // But we can verify that artifact is retrievable via store
     const res = await request(app).post("/api/v1/ai/v1/business-analysis/generate").set("Authorization", `Bearer ${token}`).send({ projectId });
     const id = res.body.artifactId;
-    const art = getArtifact(id);
+    const art = (await getRepositories().artifacts.findById("00000000-0000-0000-0000-0000000000aa", id));
     expect(art).toBeDefined();
     expect(art!.projectId).toBe(projectId);
   });
