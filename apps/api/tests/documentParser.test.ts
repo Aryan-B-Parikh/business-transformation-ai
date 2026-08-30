@@ -1,6 +1,6 @@
 /**
  * TASK-007 — Document parsing pipeline
- * DoD: Given a sample SOP PDF, worker produces >0 chunks with non-null embeddings within 60s; parsed_status becomes parsed
+ * DoD: Given a sample SOP PDF, worker produces >0 chunks with non-null embeddings within 60s; parsedStatus becomes parsed
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -108,7 +108,7 @@ describe("TASK-007: Document parsing pipeline", () => {
   });
 
   it("Integration via API — upload then status becomes parsed with chunks (simulates worker)", async () => {
-    // This is covered in documents.test but we also check that parsed_status updates via polling
+    // This is covered in documents.test but we also check that parsedStatus updates via polling
     // Create doc pending, then run processDocument, check status logic
     const doc = createDocument({
       projectId: "proj-2",

@@ -24,15 +24,43 @@ export function App({ projectId = "demo-project", token = "demo-token" }: AppPro
   const [lang, setLang] = React.useState<SupportedLanguage>("en");
   const [summary, setSummary] = React.useState<DiscoverySummaryData | null>(null);
   const [uploadedDoc, setUploadedDoc] = React.useState<unknown>(null);
-  const [artifact, setArtifact] = React.useState<{ id: string; type: string; title: string; status: string; content: Record<string, unknown>; version: number } | null>({
-    id: "demo-art-1",
-    type: "architecture_hld",
-    title: "Demo Architecture HLD",
-    status: "draft",
-    version: 1,
-    content: { components: ["API Gateway", "Core API"], diagramSpec: { nodes: [{ id: "n0", label: "API Gateway" }, { id: "n1", label: "Core API" }], edges: [{ from: "n0", to: "n1" }] } },
-  });
-  const [dashboardScores] = React.useState({ digitalMaturity: 3.5, aiReadiness: 3.2, automationOpportunity: 3.8, projectHealth: 4.0, implementationReadiness: 3.5, solutionQuality: 4.0 });
+  const [artifact, setArtifact] = React.useState<any>(null);
+  const [dashboardScores, setDashboardScores] = React.useState({ digitalMaturity: 0, aiReadiness: 0, automationOpportunity: 0, projectHealth: 0, implementationReadiness: 0, solutionQuality: 0 });
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        const { listArtifacts, getJourneyState } = await import("./api/client");
+        // Load Journey (to feed dashboard)
+        const journeyRes = await getJourneyState(projectId, token);
+        const stages = journeyRes.data || [];
+        setDashboardScores({
+          digitalMaturity: stages.length > 2 ? 4.0 : 2.5,
+          aiReadiness: stages.length > 3 ? 4.5 : 3.0,
+          automationOpportunity: 3.8,
+          projectHealth: stages.length > 0 ? 4.0 : 2.0,
+          implementationReadiness: stages.length > 5 ? 4.5 : 2.0,
+          solutionQuality: 4.0
+        });
+
+        // Load Artifacts
+        const artifactsRes = await listArtifacts(projectId, token);
+        if (artifactsRes.data && artifactsRes.data.length > 0) {
+          setArtifact(artifactsRes.data[0]);
+        }
+      } catch (err) {
+        console.error("Failed to load initial data", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [projectId, token]);
+
+  if (loading) {
+    return <div style={{ padding: 24 }}>Loading...</div>;
+  }
 
   return (
     <div data-testid="app" style={{ fontFamily: "sans-serif", maxWidth: 900, margin: "0 auto", padding: 16 }}>
@@ -61,17 +89,30 @@ export function App({ projectId = "demo-project", token = "demo-token" }: AppPro
 
       <section>
         <h2>4. Artifact Viewer / Editor (TASK-019)</h2>
-        <ArtifactViewer
-          artifact={artifact}
-          onEdit={(updates) => setArtifact((prev) => (prev ? { ...prev, ...updates, version: prev.version + 1 } : null))}
-          onRegenerate={(fb) => setArtifact((prev) => (prev ? { ...prev, version: prev.version + 1, content: { ...prev.content, feedback: fb } } : null))}
-        />
-        {artifact ? <p data-testid="artifact-version">Version: {artifact.version}</p> : null}
+        {artifact ? (
+          <>
+            <ArtifactViewer
+              artifact={artifact}
+              onEdit={async (updates) => {
+                const { updateArtifact } = await import("./api/client");
+                const res = await updateArtifact(artifact.id, updates, token);
+                setArtifact(res);
+              }}
+              onRegenerate={async (fb) => {
+                // In a real app this would trigger the AI engine
+                setArtifact((prev: any) => ({ ...prev, version: prev.version + 1, content: { ...prev.content, feedback: fb } }));
+              }}
+            />
+            <p data-testid="artifact-version">Version: {artifact.version}</p>
+          </>
+        ) : (
+          <p>No artifacts generated yet. Complete discovery to generate an artifact.</p>
+        )}
       </section>
 
       <section>
         <h2>5. Transformation Dashboard (TASK-022)</h2>
-        <Dashboard scores={dashboardScores} counts={{ artifacts: 3, roadmapItems: 5, estimates: 3 }} />
+        <Dashboard scores={dashboardScores} counts={{ artifacts: artifact ? 1 : 0, roadmapItems: 5, estimates: 3 }} />
       </section>
 
       <footer style={{ marginTop: 24, fontSize: 12, color: "#666" }}>

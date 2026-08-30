@@ -8,6 +8,7 @@
  */
 
 import { Router, Response } from "express";
+import { getRepositories } from "../repositories";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { generateArchitecture, validateArchitectureContent } from "../services/architectureAgent";
 import { generateBusinessAnalysis, validateBusinessAnalysisContent } from "../services/businessAnalysis";
@@ -22,12 +23,12 @@ import { generateProcess, validateBpmnJson } from "../services/processAgent";
 import { generateUx, validateUx } from "../services/uxAgent";
 import { getConversation, getMessages } from "../stores/conversations";
 import { getDocIdsForProject } from "../stores/documents";
-import { projects } from "./workspaces";
+
 
 const router = Router();
 
 // POST /ai/v1/discovery/ask
-router.post("/ai/v1/discovery/ask", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/discovery/ask", authenticate, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId;
   const body = req.body as { conversationHistory?: { role: string; content: string }[]; conversationId?: string; projectId?: string; query?: string };
   let history = body.conversationHistory || [];
@@ -61,12 +62,12 @@ router.post("/ai/v1/discovery/ask", authenticate, (req: AuthedRequest, res: Resp
   }
 
   const lang = (req as unknown as { lang?: string }).lang || (req.query.lang as string | undefined) || req.headers["accept-language"]?.split(",")[0]?.split(";")[0]?.trim() || "en";
-  const result = discoveryAsk({ conversationHistory: history as { role: "user" | "ai"; content: string }[], ragContext, projectId, orgId, lang });
+  const result = await discoveryAsk({ conversationHistory: history as { role: "user" | "ai"; content: string }[], ragContext, projectId, orgId, lang });
   res.json(result);
 });
 
 // POST /ai/v1/business-analysis/generate
-router.post("/ai/v1/business-analysis/generate", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/business-analysis/generate", authenticate, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId;
   const userId = req.user!.userId;
   const body = req.body as { projectId?: string; conversationId?: string; documentIds?: string[] };
@@ -75,7 +76,7 @@ router.post("/ai/v1/business-analysis/generate", authenticate, (req: AuthedReque
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "projectId required" } });
     return;
   }
-  const proj = projects.get(projectId);
+  const proj = await getRepositories().projects.findProjectById(orgId, projectId);
   if (!proj || proj.orgId !== orgId) {
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
@@ -100,13 +101,13 @@ router.post("/ai/v1/business-analysis/generate", authenticate, (req: AuthedReque
     }
   }
 
-  const { artifactId, content } = generateBusinessAnalysis({ projectId, orgId, conversationHistory, documentExcerpts, createdBy: userId });
+  const { artifactId, content } = await generateBusinessAnalysis({ projectId, orgId, conversationHistory, documentExcerpts, createdBy: userId });
   const validation = validateBusinessAnalysisContent(content);
   res.status(201).json({ artifactId, type: "business_analysis", status: "draft", content, validation, generatedBy: "ai" });
 });
 
 // POST /ai/v1/consultant/validate-idea
-router.post("/ai/v1/consultant/validate-idea", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/consultant/validate-idea", authenticate, async (req: AuthedRequest, res: Response) => {
   const body = req.body as { idea?: string; context?: { industry?: string; constraints?: string[] } };
   if (!body.idea || typeof body.idea !== "string") {
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "idea required" } });
@@ -118,7 +119,7 @@ router.post("/ai/v1/consultant/validate-idea", authenticate, (req: AuthedRequest
 });
 
 // POST /ai/v1/architecture/generate — TASK-014
-router.post("/ai/v1/architecture/generate", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/architecture/generate", authenticate, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId;
   const userId = req.user!.userId;
   const body = req.body as { projectId?: string; type?: string; params?: { cloud_preference?: string; compliance?: string[] } };
@@ -128,7 +129,7 @@ router.post("/ai/v1/architecture/generate", authenticate, (req: AuthedRequest, r
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "projectId required" } });
     return;
   }
-  const proj = projects.get(projectId);
+  const proj = await getRepositories().projects.findProjectById(orgId, projectId);
   if (!proj || proj.orgId !== orgId) {
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
@@ -139,7 +140,7 @@ router.post("/ai/v1/architecture/generate", authenticate, (req: AuthedRequest, r
 });
 
 // POST /ai/v1/process/generate-workflow — TASK-015
-router.post("/ai/v1/process/generate-workflow", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/process/generate-workflow", authenticate, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId;
   const userId = req.user!.userId;
   const body = req.body as { projectId?: string; params?: { processName?: string } };
@@ -148,7 +149,7 @@ router.post("/ai/v1/process/generate-workflow", authenticate, (req: AuthedReques
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "projectId required" } });
     return;
   }
-  const proj = projects.get(projectId);
+  const proj = await getRepositories().projects.findProjectById(orgId, projectId);
   if (!proj || proj.orgId !== orgId) {
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
@@ -159,7 +160,7 @@ router.post("/ai/v1/process/generate-workflow", authenticate, (req: AuthedReques
 });
 
 // POST /ai/v1/data-model/generate — TASK-016
-router.post("/ai/v1/data-model/generate", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/data-model/generate", authenticate, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId;
   const userId = req.user!.userId;
   const body = req.body as { projectId?: string; params?: { domain?: string } };
@@ -168,7 +169,7 @@ router.post("/ai/v1/data-model/generate", authenticate, (req: AuthedRequest, res
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "projectId required" } });
     return;
   }
-  const proj = projects.get(projectId);
+  const proj = await getRepositories().projects.findProjectById(orgId, projectId);
   if (!proj || proj.orgId !== orgId) {
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
@@ -179,7 +180,7 @@ router.post("/ai/v1/data-model/generate", authenticate, (req: AuthedRequest, res
 });
 
 // POST /ai/v1/ux/generate-wireframes — TASK-017
-router.post("/ai/v1/ux/generate-wireframes", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/ux/generate-wireframes", authenticate, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId;
   const userId = req.user!.userId;
   const body = req.body as { projectId?: string; params?: { appType?: string } };
@@ -188,7 +189,7 @@ router.post("/ai/v1/ux/generate-wireframes", authenticate, (req: AuthedRequest, 
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "projectId required" } });
     return;
   }
-  const proj = projects.get(projectId);
+  const proj = await getRepositories().projects.findProjectById(orgId, projectId);
   if (!proj || proj.orgId !== orgId) {
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
@@ -199,7 +200,7 @@ router.post("/ai/v1/ux/generate-wireframes", authenticate, (req: AuthedRequest, 
 });
 
 // POST /ai/v1/diagram/render — TASK-018
-router.post("/ai/v1/diagram/render", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/diagram/render", authenticate, async (req: AuthedRequest, res: Response) => {
   const body = req.body as { diagramSpec?: { nodes: { id: string; label: string; type?: string }[]; edges: { from: string; to: string; label?: string }[] } };
   if (!body.diagramSpec || !Array.isArray(body.diagramSpec.nodes)) {
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "diagramSpec required" } });
@@ -215,7 +216,7 @@ router.post("/ai/v1/diagram/render", authenticate, (req: AuthedRequest, res: Res
 });
 
 // POST /ai/v1/planning/generate-roadmap — TASK-020
-router.post("/ai/v1/planning/generate-roadmap", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/planning/generate-roadmap", authenticate, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId;
   const userId = req.user!.userId;
   const body = req.body as { projectId?: string; params?: { horizonMonths?: number } };
@@ -224,7 +225,7 @@ router.post("/ai/v1/planning/generate-roadmap", authenticate, (req: AuthedReques
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "projectId required" } });
     return;
   }
-  const proj = projects.get(projectId);
+  const proj = await getRepositories().projects.findProjectById(orgId, projectId);
   if (!proj || proj.orgId !== orgId) {
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;
@@ -235,7 +236,7 @@ router.post("/ai/v1/planning/generate-roadmap", authenticate, (req: AuthedReques
 });
 
 // POST /ai/v1/planning/estimate — TASK-021
-router.post("/ai/v1/planning/estimate", authenticate, (req: AuthedRequest, res: Response) => {
+router.post("/ai/v1/planning/estimate", authenticate, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId;
   const userId = req.user!.userId;
   const body = req.body as { projectId?: string; scope?: string[]; artifactId?: string };
@@ -244,7 +245,7 @@ router.post("/ai/v1/planning/estimate", authenticate, (req: AuthedRequest, res: 
     res.status(400).json({ error: { code: "BAD_REQUEST", message: "projectId required" } });
     return;
   }
-  const proj = projects.get(projectId);
+  const proj = await getRepositories().projects.findProjectById(orgId, projectId);
   if (!proj || proj.orgId !== orgId) {
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
     return;

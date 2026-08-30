@@ -24,8 +24,8 @@ export function generateDataModel(req: DataModelingRequest): { artifactId: strin
   const domain = req.params?.domain || "Order";
   const entities = [
     { name: "organizations", fields: [{ name: "id", type: "uuid", pk: true }, { name: "name", type: "text" }] },
-    { name: "users", fields: [{ name: "id", type: "uuid", pk: true }, { name: "org_id", type: "uuid", fk: "organizations.id" }, { name: "email", type: "text" }] },
-    { name: domain.toLowerCase() + "s", fields: [{ name: "id", type: "uuid", pk: true }, { name: "org_id", type: "uuid", fk: "organizations.id" }, { name: "name", type: "text" }] },
+    { name: "users", fields: [{ name: "id", type: "uuid", pk: true }, { name: "orgId", type: "uuid", fk: "organizations.id" }, { name: "email", type: "text" }] },
+    { name: domain.toLowerCase() + "s", fields: [{ name: "id", type: "uuid", pk: true }, { name: "orgId", type: "uuid", fk: "organizations.id" }, { name: "name", type: "text" }] },
   ];
   const relations = [
     { from: "organizations", to: "users", type: "1:N" },

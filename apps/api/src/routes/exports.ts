@@ -6,11 +6,12 @@
  */
 
 import { Router, Response } from "express";
+import { getRepositories } from "../repositories";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
 import { getArtifact } from "../stores/artifacts";
 import { createExport, createBundle, getExport } from "../stores/exports";
-import { projects } from "./workspaces";
+
 
 const router = Router();
 
@@ -47,7 +48,7 @@ router.post(
   async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const projectId = String(req.params.id);
-    const proj = projects.get(projectId);
+    const proj = await getRepositories().projects.findProjectById(orgId, projectId);
     if (!proj || proj.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
       return;
@@ -83,7 +84,7 @@ router.get(
   "/exports/:id/download",
   authenticate,
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const exp = getExport(String(req.params.id));
     if (!exp || exp.orgId !== orgId) {

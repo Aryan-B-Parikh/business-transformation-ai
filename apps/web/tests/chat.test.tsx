@@ -132,10 +132,16 @@ describe("TASK-013: E2E — upload doc, chat, see summary (DoD)", () => {
   beforeEach(() => mockFetch.mockReset());
 
   it("App renders three sections and handles upload + chat flow", async () => {
-    // App will call createConversation on mount
+    // 1) App mount: getJourneyState
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) } as Response);
+    // 2) App mount: listArtifacts
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) } as Response);
+    // 3) Chat mount: createConversation
     mockFetch.mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ id: "conv-1" }) } as Response);
     render(<App projectId="proj-e2e" token="tok-e2e" />);
-    expect(screen.getByTestId("app")).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByTestId("app")).toBeDefined();
+    });
     expect(screen.getByText("1. Upload Business Documents")).toBeDefined();
     expect(screen.getByText("2. AI Transformation Companion")).toBeDefined();
     expect(screen.getByText("3. Discovery Summary")).toBeDefined();

@@ -18,35 +18,36 @@ import {
 // ==========================================
 export interface WorkspaceEntity {
   id: string;
-  org_id: string;
+  orgId: string;
   name: string;
   description?: string | null;
-  created_at: Date;
-  updated_at: Date;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ProjectEntity {
   id: string;
-  org_id: string;
-  workspace_id: string;
+  orgId: string;
+  workspaceId: string;
   name: string;
   description?: string | null;
   status: "active" | "archived";
-  created_at: Date;
-  updated_at: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ProjectMemberEntity {
   id: string;
-  org_id: string;
-  project_id: string;
-  user_id: string;
+  orgId: string;
+  projectId: string;
+  userId: string;
   role: UserRole;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface IProjectAggregateRepository {
-  createWorkspace(orgId: string, data: { name: string; description?: string }): Promise<WorkspaceEntity>;
+  createWorkspace(orgId: string, data: { name: string; description?: string; createdBy: string }): Promise<WorkspaceEntity>;
   findWorkspaceById(orgId: string, id: string): Promise<WorkspaceEntity | null>;
   listWorkspaces(orgId: string): Promise<WorkspaceEntity[]>;
 
@@ -60,6 +61,9 @@ export interface IProjectAggregateRepository {
 
   addMember(orgId: string, projectId: string, userId: string, role: UserRole): Promise<ProjectMemberEntity>;
   listMembers(orgId: string, projectId: string): Promise<ProjectMemberEntity[]>;
+
+  updateProject(orgId: string, id: string, updates: { name?: string; description?: string | null; status?: "active" | "archived" }): Promise<ProjectEntity>;
+  deleteProject(orgId: string, id: string): Promise<void>;
 }
 
 // ==========================================
@@ -67,8 +71,8 @@ export interface IProjectAggregateRepository {
 // ==========================================
 export interface ArtifactEntity {
   id: string;
-  org_id: string;
-  project_id: string;
+  orgId: string;
+  projectId: string;
   type: ArtifactType;
   title: string;
   content: ArtifactContent;
@@ -76,19 +80,19 @@ export interface ArtifactEntity {
   version: number;
   parent_id?: string | null;
   change_reason?: string | null;
-  created_by?: string | null;
-  created_at: Date;
-  updated_at: Date;
+  createdBy?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ArtifactCommentEntity {
   id: string;
-  org_id: string;
-  artifact_id: string;
-  user_id: string;
+  orgId: string;
+  artifactId: string;
+  userId: string;
   content: string;
   status: "open" | "resolved";
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface IArtifactAggregateRepository {
@@ -100,7 +104,7 @@ export interface IArtifactAggregateRepository {
       title: string;
       content: ArtifactContent;
       status?: ArtifactStatus;
-      created_by?: string;
+      createdBy?: string;
     }
   ): Promise<ArtifactEntity>;
 
@@ -114,8 +118,9 @@ export interface IArtifactAggregateRepository {
       content?: ArtifactContent;
       title?: string;
       change_reason?: string;
-      created_by?: string;
+      createdBy?: string;
       status?: ArtifactStatus;
+      expectedVersion?: number;
     }
   ): Promise<ArtifactEntity>;
 
@@ -129,8 +134,8 @@ export interface IArtifactAggregateRepository {
 // ==========================================
 export interface JourneyStageEntity {
   id: string;
-  org_id: string;
-  project_id: string;
+  orgId: string;
+  projectId: string;
   stage: JourneyStage;
   status: JourneyStatus;
   entered_at: Date;
@@ -164,26 +169,26 @@ export interface ITransformationAggregateRepository {
 // ==========================================
 export interface DocumentEntity {
   id: string;
-  org_id: string;
-  project_id: string;
+  orgId: string;
+  projectId: string;
   filename: string;
   doc_type: string;
   file_size: number;
-  parsed_status: "pending" | "parsed" | "failed";
+  parsedStatus: "pending" | "parsed" | "failed";
   storage_key?: string | null;
-  created_at: Date;
-  updated_at: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface DocumentChunkEntity {
   id: string;
-  org_id: string;
-  document_id: string;
+  orgId: string;
+  documentId: string;
   chunk_index: number;
   content: string;
   page_number?: number | null;
   embedding?: number[] | null;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface IDocumentAggregateRepository {
@@ -204,22 +209,22 @@ export interface IDocumentAggregateRepository {
 // ==========================================
 export interface ArtifactApprovalEntity {
   id: string;
-  org_id: string;
-  artifact_id: string;
-  user_id: string;
+  orgId: string;
+  artifactId: string;
+  userId: string;
   status: "approved" | "rejected" | "changes_requested";
   comment?: string | null;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface NotificationEntity {
   id: string;
-  org_id: string;
-  user_id: string;
+  orgId: string;
+  userId: string;
   title: string;
   body: string;
   read: boolean;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface ICollaborationAggregateRepository {
@@ -235,17 +240,17 @@ export interface ICollaborationAggregateRepository {
 // ==========================================
 export interface WebhookConfigEntity {
   id: string;
-  org_id: string;
-  workspace_id: string;
+  orgId: string;
+  workspaceId: string;
   url: string;
   events: string[];
   secret?: string | null;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface OutboxEventEntity {
   id: string;
-  org_id: string;
+  orgId: string;
   event_type: string;
   aggregate_id: string;
   payload: Record<string, unknown>;
@@ -253,7 +258,7 @@ export interface OutboxEventEntity {
   attempt_count: number;
   next_retry_at?: Date | null;
   last_error?: string | null;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface IWebhookAggregateRepository {
@@ -270,25 +275,25 @@ export interface IWebhookAggregateRepository {
 // ==========================================
 export interface AuditLogEntity {
   id: string;
-  org_id: string;
-  actor_id: string;
+  orgId: string;
+  actorId: string;
   action: string;
   resource_type: string;
   resource_id: string;
   details: Record<string, unknown>;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface AIModelConfigEntity {
   id: string;
-  org_id: string;
+  orgId: string;
   module: string;
   provider: string;
   model: string;
   temperature: number;
   max_tokens: number;
   enabled: boolean;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface IGovernanceAggregateRepository {

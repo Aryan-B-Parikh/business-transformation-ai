@@ -4,7 +4,8 @@
  * Tenant (org_id) resolved from JWT — never accepted as client-supplied parameter (02 §5 RLS)
  */
 
-import jwt from "jsonwebtoken";
+import jwt, { JwtHeader } from "jsonwebtoken";
+import { getPrimaryPrivateKey, getPublicKey } from "./keys";
 
 export interface JwtPayload {
   userId: string;
@@ -16,21 +17,12 @@ export interface JwtPayload {
 }
 
 const DEFAULT_EXPIRES_IN = "8h";
-const DEFAULT_DEV_SECRET = "dev_jwt_secret_change_in_production_32chars!";
 export const CANONICAL_ISSUER = "https://auth.business-transformation-ai.com";
 export const CANONICAL_AUDIENCE = "https://api.business-transformation-ai.com";
 
 export function getJwtSecret(): string {
-  if (process.env.NODE_ENV === "production") {
-    const secret = process.env.JWT_SECRET;
-    if (!secret || secret === DEFAULT_DEV_SECRET || secret.length < 32) {
-      throw new Error(
-        "CRITICAL SECURITY INVARIANT VIOLATION: Production requires a secure JWT_SECRET of at least 32 characters. Refusing to start."
-      );
-    }
-    return secret;
-  }
-  return process.env.JWT_SECRET || DEFAULT_DEV_SECRET;
+  // Legacy function no longer used. Throw to ensure it's removed cleanly.
+  throw new Error("getJwtSecret() is deprecated in favor of getPrimaryPrivateKey()");
 }
 
 export function getJwtExpiresIn(): string {
@@ -45,11 +37,13 @@ export function signToken(payload: Omit<JwtPayload, "iat" | "exp">, expiresIn?: 
   if (!payload.orgId) throw new Error("orgId is required in JWT");
   if (!payload.role) throw new Error("role is required in JWT");
   if (!payload.userId) throw new Error("userId is required in JWT");
-  return jwt.sign(payload as object, getJwtSecret(), {
-    algorithm: "HS256",
+  const { key, kid } = getPrimaryPrivateKey();
+  return jwt.sign(payload as object, key, {
+    algorithm: "RS256",
     issuer: CANONICAL_ISSUER,
     audience: CANONICAL_AUDIENCE,
     expiresIn: (expiresIn || getJwtExpiresIn()) as string & { _opaque?: never },
+    keyid: kid,
   } as jwt.SignOptions);
 }
 
@@ -59,8 +53,18 @@ export function signToken(payload: Omit<JwtPayload, "iat" | "exp">, expiresIn?: 
  */
 export function verifyToken(token: string): JwtPayload {
   try {
-    const decoded = jwt.verify(token, getJwtSecret(), {
-      algorithms: ["HS256"],
+    const decodedUnverified = jwt.decode(token, { complete: true }) as { header: JwtHeader; payload: JwtPayload };
+    if (!decodedUnverified || !decodedUnverified.header || !decodedUnverified.header.kid) {
+      throw new Error("Invalid token: missing kid");
+    }
+    
+    const pubKey = getPublicKey(decodedUnverified.header.kid);
+    if (!pubKey) {
+      throw new Error("Invalid token: unknown kid");
+    }
+
+    const decoded = jwt.verify(token, pubKey, {
+      algorithms: ["RS256"],
       issuer: CANONICAL_ISSUER,
       audience: CANONICAL_AUDIENCE,
     }) as JwtPayload;
@@ -92,17 +96,19 @@ export function signTokenWithExpiry(
   payload: Omit<JwtPayload, "iat" | "exp">,
   expiresIn: string | number
 ): string {
-  return jwt.sign(payload as object, getJwtSecret(), {
-    algorithm: "HS256",
+  const { key, kid } = getPrimaryPrivateKey();
+  return jwt.sign(payload as object, key, {
+    algorithm: "RS256",
     issuer: CANONICAL_ISSUER,
     audience: CANONICAL_AUDIENCE,
     expiresIn: expiresIn as unknown as string,
+    keyid: kid,
   } as jwt.SignOptions);
 }
 
 /** Create an already-expired token for testing */
 export function signExpiredToken(payload: Omit<JwtPayload, "iat" | "exp">): string {
-  // exp in the past
+  const { key, kid } = getPrimaryPrivateKey();
   return jwt.sign(
     {
       ...payload,
@@ -110,7 +116,7 @@ export function signExpiredToken(payload: Omit<JwtPayload, "iat" | "exp">): stri
       aud: CANONICAL_AUDIENCE,
       exp: Math.floor(Date.now() / 1000) - 10,
     },
-    getJwtSecret(),
-    { algorithm: "HS256" }
+    key,
+    { algorithm: "RS256", keyid: kid }
   );
 }

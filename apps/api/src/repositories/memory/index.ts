@@ -42,15 +42,16 @@ export class MemoryProjectRepository implements IProjectAggregateRepository {
   private projects = new Map<string, ProjectEntity>();
   private members = new Map<string, ProjectMemberEntity>();
 
-  async createWorkspace(orgId: string, data: { name: string; description?: string }): Promise<WorkspaceEntity> {
+  async createWorkspace(orgId: string, data: { name: string; description?: string; createdBy: string }): Promise<WorkspaceEntity> {
     requireOrgId(orgId);
     const ws: WorkspaceEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
+      orgId: orgId,
       name: data.name,
       description: data.description ?? null,
-      created_at: new Date(),
-      updated_at: new Date(),
+      createdBy: data.createdBy,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
     this.workspaces.set(ws.id, ws);
     return ws;
@@ -59,13 +60,13 @@ export class MemoryProjectRepository implements IProjectAggregateRepository {
   async findWorkspaceById(orgId: string, id: string): Promise<WorkspaceEntity | null> {
     requireOrgId(orgId);
     const ws = this.workspaces.get(id);
-    if (!ws || ws.org_id !== orgId) return null;
+    if (!ws || ws.orgId !== orgId) return null;
     return ws;
   }
 
   async listWorkspaces(orgId: string): Promise<WorkspaceEntity[]> {
     requireOrgId(orgId);
-    return Array.from(this.workspaces.values()).filter((w) => w.org_id === orgId);
+    return Array.from(this.workspaces.values()).filter((w) => w.orgId === orgId);
   }
 
   async createProject(
@@ -76,13 +77,13 @@ export class MemoryProjectRepository implements IProjectAggregateRepository {
     requireOrgId(orgId);
     const prj: ProjectEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      workspace_id: workspaceId,
+      orgId: orgId,
+      workspaceId: workspaceId,
       name: data.name,
       description: data.description ?? null,
       status: "active",
-      created_at: new Date(),
-      updated_at: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
     this.projects.set(prj.id, prj);
     return prj;
@@ -91,14 +92,14 @@ export class MemoryProjectRepository implements IProjectAggregateRepository {
   async findProjectById(orgId: string, id: string): Promise<ProjectEntity | null> {
     requireOrgId(orgId);
     const prj = this.projects.get(id);
-    if (!prj || prj.org_id !== orgId) return null;
+    if (!prj || prj.orgId !== orgId) return null;
     return prj;
   }
 
   async listProjectsByWorkspace(orgId: string, workspaceId: string): Promise<ProjectEntity[]> {
     requireOrgId(orgId);
     return Array.from(this.projects.values()).filter(
-      (p) => p.org_id === orgId && p.workspace_id === workspaceId
+      (p) => p.orgId === orgId && p.workspaceId === workspaceId
     );
   }
 
@@ -106,11 +107,11 @@ export class MemoryProjectRepository implements IProjectAggregateRepository {
     requireOrgId(orgId);
     const mem: ProjectMemberEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      project_id: projectId,
-      user_id: userId,
+      orgId: orgId,
+      projectId: projectId,
+      userId: userId,
       role,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
     this.members.set(mem.id, mem);
     return mem;
@@ -119,8 +120,26 @@ export class MemoryProjectRepository implements IProjectAggregateRepository {
   async listMembers(orgId: string, projectId: string): Promise<ProjectMemberEntity[]> {
     requireOrgId(orgId);
     return Array.from(this.members.values()).filter(
-      (m) => m.org_id === orgId && m.project_id === projectId
+      (m) => m.orgId === orgId && m.projectId === projectId
     );
+  }
+
+  async updateProject(orgId: string, id: string, updates: { name?: string; description?: string | null; status?: "active" | "archived" }): Promise<ProjectEntity> {
+    requireOrgId(orgId);
+    const prj = this.projects.get(id);
+    if (!prj || prj.orgId !== orgId) throw new Error("Project not found");
+    if (updates.name !== undefined) prj.name = updates.name;
+    if (updates.description !== undefined) prj.description = updates.description;
+    if (updates.status !== undefined) prj.status = updates.status;
+    prj.updatedAt = new Date();
+    return prj;
+  }
+
+  async deleteProject(orgId: string, id: string): Promise<void> {
+    requireOrgId(orgId);
+    const prj = this.projects.get(id);
+    if (!prj || prj.orgId !== orgId) throw new Error("Project not found");
+    this.projects.delete(id);
   }
 }
 
@@ -136,22 +155,22 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
       title: string;
       content: ArtifactContent;
       status?: ArtifactStatus;
-      created_by?: string;
+      createdBy?: string;
     }
   ): Promise<ArtifactEntity> {
     requireOrgId(orgId);
     const art: ArtifactEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      project_id: projectId,
+      orgId: orgId,
+      projectId: projectId,
       type: data.type,
       title: data.title,
       content: data.content,
       status: data.status ?? "draft",
       version: 1,
-      created_by: data.created_by ?? null,
-      created_at: new Date(),
-      updated_at: new Date(),
+      createdBy: data.createdBy ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
     this.artifacts.set(art.id, art);
     return art;
@@ -160,14 +179,14 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
   async findById(orgId: string, id: string): Promise<ArtifactEntity | null> {
     requireOrgId(orgId);
     const art = this.artifacts.get(id);
-    if (!art || art.org_id !== orgId) return null;
+    if (!art || art.orgId !== orgId) return null;
     return art;
   }
 
   async listByProject(orgId: string, projectId: string): Promise<ArtifactEntity[]> {
     requireOrgId(orgId);
     return Array.from(this.artifacts.values()).filter(
-      (a) => a.org_id === orgId && a.project_id === projectId
+      (a) => a.orgId === orgId && a.projectId === projectId
     );
   }
 
@@ -178,8 +197,9 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
       content?: ArtifactContent;
       title?: string;
       change_reason?: string;
-      created_by?: string;
+      createdBy?: string;
       status?: ArtifactStatus;
+      expectedVersion?: number;
     }
   ): Promise<ArtifactEntity> {
     requireOrgId(orgId);
@@ -188,8 +208,8 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
 
     const newVersion: ArtifactEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      project_id: current.project_id,
+      orgId: orgId,
+      projectId: current.projectId,
       type: current.type,
       title: updates.title ?? current.title,
       content: updates.content ?? current.content,
@@ -197,9 +217,9 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
       version: current.version + 1,
       parent_id: current.id,
       change_reason: updates.change_reason ?? null,
-      created_by: updates.created_by ?? current.created_by,
-      created_at: new Date(),
-      updated_at: new Date(),
+      createdBy: updates.createdBy ?? current.createdBy,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
     this.artifacts.set(newVersion.id, newVersion);
     return newVersion;
@@ -210,7 +230,7 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
     const current = await this.findById(orgId, id);
     if (!current) throw new Error("Artifact not found");
     current.status = status;
-    current.updated_at = new Date();
+    current.updatedAt = new Date();
     return current;
   }
 
@@ -218,12 +238,12 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
     requireOrgId(orgId);
     const comment: ArtifactCommentEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      artifact_id: artifactId,
-      user_id: userId,
+      orgId: orgId,
+      artifactId: artifactId,
+      userId: userId,
       content,
       status: "open",
-      created_at: new Date(),
+      createdAt: new Date(),
     };
     this.comments.set(comment.id, comment);
     return comment;
@@ -232,7 +252,7 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
   async listComments(orgId: string, artifactId: string): Promise<ArtifactCommentEntity[]> {
     requireOrgId(orgId);
     return Array.from(this.comments.values()).filter(
-      (c) => c.org_id === orgId && c.artifact_id === artifactId
+      (c) => c.orgId === orgId && c.artifactId === artifactId
     );
   }
 }
@@ -244,7 +264,7 @@ export class MemoryTransformationRepository implements ITransformationAggregateR
   async getJourneyState(orgId: string, projectId: string): Promise<JourneyStageEntity[]> {
     requireOrgId(orgId);
     return Array.from(this.stages.values()).filter(
-      (s) => s.org_id === orgId && s.project_id === projectId
+      (s) => s.orgId === orgId && s.projectId === projectId
     );
   }
 
@@ -261,8 +281,8 @@ export class MemoryTransformationRepository implements ITransformationAggregateR
     const existing = this.stages.get(key);
     const entity: JourneyStageEntity = {
       id: existing?.id ?? crypto.randomUUID(),
-      org_id: orgId,
-      project_id: projectId,
+      orgId: orgId,
+      projectId: projectId,
       stage,
       status,
       entered_at: existing?.entered_at ?? new Date(),
@@ -302,15 +322,15 @@ export class MemoryDocumentRepository implements IDocumentAggregateRepository {
     requireOrgId(orgId);
     const doc: DocumentEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      project_id: projectId,
+      orgId: orgId,
+      projectId: projectId,
       filename: data.filename,
       doc_type: data.docType,
       file_size: data.fileSize,
-      parsed_status: "pending",
+      parsedStatus: "pending",
       storage_key: data.storageKey ?? null,
-      created_at: new Date(),
-      updated_at: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
     this.documents.set(doc.id, doc);
     return doc;
@@ -319,14 +339,14 @@ export class MemoryDocumentRepository implements IDocumentAggregateRepository {
   async findDocumentById(orgId: string, id: string): Promise<DocumentEntity | null> {
     requireOrgId(orgId);
     const doc = this.documents.get(id);
-    if (!doc || doc.org_id !== orgId) return null;
+    if (!doc || doc.orgId !== orgId) return null;
     return doc;
   }
 
   async listDocumentsByProject(orgId: string, projectId: string): Promise<DocumentEntity[]> {
     requireOrgId(orgId);
     return Array.from(this.documents.values()).filter(
-      (d) => d.org_id === orgId && d.project_id === projectId
+      (d) => d.orgId === orgId && d.projectId === projectId
     );
   }
 
@@ -334,8 +354,8 @@ export class MemoryDocumentRepository implements IDocumentAggregateRepository {
     requireOrgId(orgId);
     const doc = await this.findDocumentById(orgId, id);
     if (!doc) throw new Error("Document not found");
-    doc.parsed_status = status;
-    doc.updated_at = new Date();
+    doc.parsedStatus = status;
+    doc.updatedAt = new Date();
     return doc;
   }
 
@@ -343,13 +363,13 @@ export class MemoryDocumentRepository implements IDocumentAggregateRepository {
     requireOrgId(orgId);
     const entities: DocumentChunkEntity[] = chunksData.map((c) => ({
       id: crypto.randomUUID(),
-      org_id: orgId,
-      document_id: documentId,
+      orgId: orgId,
+      documentId: documentId,
       chunk_index: c.chunkIndex,
       content: c.content,
       page_number: c.pageNumber ?? null,
       embedding: c.embedding ?? null,
-      created_at: new Date(),
+      createdAt: new Date(),
     }));
     this.chunks.set(documentId, (this.chunks.get(documentId) || []).concat(entities));
     return entities;
@@ -375,12 +395,12 @@ export class MemoryCollaborationRepository implements ICollaborationAggregateRep
     requireOrgId(orgId);
     const entity: ArtifactApprovalEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      artifact_id: artifactId,
-      user_id: userId,
+      orgId: orgId,
+      artifactId: artifactId,
+      userId: userId,
       status,
       comment: comment ?? null,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
     this.approvals.set(entity.id, entity);
     return entity;
@@ -388,19 +408,19 @@ export class MemoryCollaborationRepository implements ICollaborationAggregateRep
 
   async listApprovals(orgId: string, artifactId: string): Promise<ArtifactApprovalEntity[]> {
     requireOrgId(orgId);
-    return Array.from(this.approvals.values()).filter((a) => a.org_id === orgId && a.artifact_id === artifactId);
+    return Array.from(this.approvals.values()).filter((a) => a.orgId === orgId && a.artifactId === artifactId);
   }
 
   async createNotification(orgId: string, userId: string, title: string, body: string): Promise<NotificationEntity> {
     requireOrgId(orgId);
     const notif: NotificationEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      user_id: userId,
+      orgId: orgId,
+      userId: userId,
       title,
       body,
       read: false,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
     this.notifications.set(notif.id, notif);
     return notif;
@@ -408,13 +428,13 @@ export class MemoryCollaborationRepository implements ICollaborationAggregateRep
 
   async listNotifications(orgId: string, userId: string): Promise<NotificationEntity[]> {
     requireOrgId(orgId);
-    return Array.from(this.notifications.values()).filter((n) => n.org_id === orgId && n.user_id === userId);
+    return Array.from(this.notifications.values()).filter((n) => n.orgId === orgId && n.userId === userId);
   }
 
   async markNotificationRead(orgId: string, id: string): Promise<NotificationEntity> {
     requireOrgId(orgId);
     const notif = this.notifications.get(id);
-    if (!notif || notif.org_id !== orgId) throw new Error("Notification not found");
+    if (!notif || notif.orgId !== orgId) throw new Error("Notification not found");
     notif.read = true;
     return notif;
   }
@@ -428,12 +448,12 @@ export class MemoryWebhookRepository implements IWebhookAggregateRepository {
     requireOrgId(orgId);
     const cfg: WebhookConfigEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      workspace_id: workspaceId,
+      orgId: orgId,
+      workspaceId: workspaceId,
       url: data.url,
       events: data.events,
       secret: data.secret ?? null,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
     this.configs.set(cfg.id, cfg);
     return cfg;
@@ -441,13 +461,13 @@ export class MemoryWebhookRepository implements IWebhookAggregateRepository {
 
   async listConfigs(orgId: string, workspaceId: string): Promise<WebhookConfigEntity[]> {
     requireOrgId(orgId);
-    return Array.from(this.configs.values()).filter((c) => c.org_id === orgId && c.workspace_id === workspaceId);
+    return Array.from(this.configs.values()).filter((c) => c.orgId === orgId && c.workspaceId === workspaceId);
   }
 
   async findConfigById(orgId: string, id: string): Promise<WebhookConfigEntity | null> {
     requireOrgId(orgId);
     const c = this.configs.get(id);
-    if (!c || c.org_id !== orgId) return null;
+    if (!c || c.orgId !== orgId) return null;
     return c;
   }
 
@@ -455,13 +475,13 @@ export class MemoryWebhookRepository implements IWebhookAggregateRepository {
     requireOrgId(orgId);
     const evt: OutboxEventEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
+      orgId: orgId,
       event_type: eventType,
       aggregate_id: aggregateId,
       payload,
       status: "pending",
       attempt_count: 0,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
     this.outbox.set(evt.id, evt);
     return evt;
@@ -490,13 +510,13 @@ export class MemoryGovernanceRepository implements IGovernanceAggregateRepositor
     requireOrgId(orgId);
     const log: AuditLogEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
-      actor_id: actorId,
+      orgId: orgId,
+      actorId: actorId,
       action,
       resource_type: resourceType,
       resource_id: resourceId,
       details,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
     this.logs.unshift(log);
     return log;
@@ -504,7 +524,7 @@ export class MemoryGovernanceRepository implements IGovernanceAggregateRepositor
 
   async listAuditLogs(orgId: string, limit = 100): Promise<AuditLogEntity[]> {
     requireOrgId(orgId);
-    return this.logs.filter((l) => l.org_id === orgId).slice(0, limit);
+    return this.logs.filter((l) => l.orgId === orgId).slice(0, limit);
   }
 
   async setAIModelConfig(orgId: string, module: string, config: { provider: string; model: string; temperature: number; max_tokens: number; enabled: boolean }): Promise<AIModelConfigEntity> {
@@ -512,14 +532,14 @@ export class MemoryGovernanceRepository implements IGovernanceAggregateRepositor
     const key = `${orgId}:${module}`;
     const entity: AIModelConfigEntity = {
       id: crypto.randomUUID(),
-      org_id: orgId,
+      orgId: orgId,
       module,
       provider: config.provider,
       model: config.model,
       temperature: config.temperature,
       max_tokens: config.max_tokens,
       enabled: config.enabled,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
     this.aiConfigs.set(key, entity);
     return entity;

@@ -6,6 +6,7 @@
 
 import { signToken } from "./jwt";
 import { findUserByEmail, findUserById, verifyPassword } from "./users";
+import { createRefreshToken, findRefreshToken, revokeRefreshToken } from "./refreshTokens";
 
 export interface LoginRequest {
   email: string;
@@ -20,6 +21,7 @@ export interface SsoCallbackRequest {
 
 export interface AuthResult {
   token: string;
+  refreshToken?: string;
   user: { id: string; orgId: string; email: string; name: string; role: string };
 }
 
@@ -53,8 +55,11 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
     role: user.role,
     email: user.email,
   });
+  const { token: refreshTokenString } = createRefreshToken(user.id);
+  
   return {
     token,
+    refreshToken: refreshTokenString,
     user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role },
   };
 }
@@ -98,10 +103,59 @@ export async function ssoCallback(req: SsoCallbackRequest): Promise<AuthResult> 
     role: user.role,
     email: user.email,
   });
+  const { token: refreshTokenString } = createRefreshToken(user.id);
+
+  return {
+    token,
+    refreshToken: refreshTokenString,
+    user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role },
+  };
+}
+
+/**
+ * Refresh an access token using a valid refresh token.
+ */
+export async function refreshAccessToken(refreshTokenStr: string): Promise<AuthResult> {
+  const rt = findRefreshToken(refreshTokenStr);
+  if (!rt) {
+    const err = new Error("Invalid refresh token") as Error & { status?: number };
+    err.status = 401;
+    throw err;
+  }
+  if (rt.revokedAt || rt.expiresAt < new Date()) {
+    const err = new Error("Refresh token expired or revoked") as Error & { status?: number };
+    err.status = 401;
+    throw err;
+  }
+  
+  const user = findUserById(rt.userId);
+  if (!user) {
+    const err = new Error("User not found") as Error & { status?: number };
+    err.status = 401;
+    throw err;
+  }
+
+  const token = signToken({
+    userId: user.id,
+    orgId: user.orgId,
+    role: user.role,
+    email: user.email,
+  });
+
   return {
     token,
     user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role },
   };
+}
+
+/**
+ * Revoke a refresh token (Logout)
+ */
+export async function logout(refreshTokenStr: string): Promise<void> {
+  const rt = findRefreshToken(refreshTokenStr);
+  if (rt) {
+    revokeRefreshToken(rt.id);
+  }
 }
 
 /** Helper for tests: get user by ID for sso */

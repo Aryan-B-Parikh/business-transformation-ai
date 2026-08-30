@@ -17,7 +17,7 @@ describe("TASK-003: Auth service", () => {
   const plain = getSeedPlainPassword();
   const seeded = SEED_USERS[0]; // org_admin@org-a.com
 
-  it("POST /api/v1/auth/login — valid credentials returns JWT with org_id/role claims", async () => {
+  it("POST /api/v1/auth/login — valid credentials returns JWT with orgId/role claims", async () => {
     const res = await request(app).post("/api/v1/auth/login").send({ email: seeded.email, password: plain });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
@@ -94,7 +94,7 @@ describe("TASK-003: Auth service", () => {
     expect(res.body.error.code).toBe("TOKEN_EXPIRED");
   });
 
-  it("verifyToken — token missing org_id/role should be invalid (tenant never client-supplied)", async () => {
+  it("verifyToken — token missing orgId/role should be invalid (tenant never client-supplied)", async () => {
     // Create raw JWT without orgId/role to simulate client tampering — should be rejected
     const jwt = await import("jsonwebtoken");
     const raw = jwt.default.sign(
@@ -105,7 +105,7 @@ describe("TASK-003: Auth service", () => {
     expect(res.status).toBe(401);
   });
 
-  it("Tenant isolation: JWT org_id is trusted, path orgId must match JWT orgId", async () => {
+  it("Tenant isolation: JWT orgId is trusted, path orgId must match JWT orgId", async () => {
     const loginA = await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain });
     const tokenA = loginA.body.token;
     // Try to access org B's users with org A token — should be 403 cross-tenant

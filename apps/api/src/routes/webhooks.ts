@@ -7,7 +7,7 @@ import { Router, Response } from "express";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
 import { createWebhookConfig, getDeliveries, getWebhookConfig, listWebhookConfigs, triggerWebhooks } from "../stores/webhooks";
-import { workspaces } from "./workspaces";
+import { getRepositories } from "../repositories";
 
 const router = Router();
 
@@ -16,11 +16,11 @@ router.post(
   "/workspaces/:id/webhooks",
   authenticate,
   authorize("org_admin", "workspace_admin"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const workspaceId = String(req.params.id);
     // Verify workspace exists and belongs to org
-    const ws = workspaces.get(workspaceId);
+    const ws = await getRepositories().projects.findWorkspaceById(orgId, workspaceId);
     if (!ws || ws.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Workspace not found" } });
       return;
@@ -41,10 +41,10 @@ router.get(
   "/workspaces/:id/webhooks",
   authenticate,
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const workspaceId = String(req.params.id);
-    const ws = workspaces.get(workspaceId);
+    const ws = await getRepositories().projects.findWorkspaceById(orgId, workspaceId);
     if (!ws || ws.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Workspace not found" } });
       return;

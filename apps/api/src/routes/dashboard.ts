@@ -4,10 +4,11 @@
  */
 
 import { Router, Response } from "express";
+import { getRepositories } from "../repositories";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
 import { computeDashboard, captureSnapshot, getDashboardHistory } from "../services/dashboard";
-import { projects } from "./workspaces";
+
 
 const router = Router();
 
@@ -16,10 +17,10 @@ router.get(
   "/projects/:id/dashboard",
   authenticate,
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const projectId = String(req.params.id);
-    const proj = projects.get(projectId);
+    const proj = await getRepositories().projects.findProjectById(orgId, projectId);
     if (!proj || proj.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
       return;
@@ -36,10 +37,10 @@ router.get(
   "/projects/:id/dashboard/history",
   authenticate,
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const projectId = String(req.params.id);
-    const proj = projects.get(projectId);
+    const proj = await getRepositories().projects.findProjectById(orgId, projectId);
     if (!proj || proj.orgId !== orgId) {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
       return;

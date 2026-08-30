@@ -51,8 +51,8 @@ export function generateArchitecture(req: ArchitectureRequest): { artifactId: st
   const lldSections = isHld
     ? undefined
     : [
-        { title: "API Contracts", description: "REST /api/v1 with JWT org_id" },
-        { title: "Data Model", description: "Postgres RLS by org_id, pgvector" },
+        { title: "API Contracts", description: "REST /api/v1 with JWT orgId" },
+        { title: "Data Model", description: "Postgres RLS by orgId, pgvector" },
         { title: "Security", description: "RBAC, encryption at rest & transit" },
       ];
 

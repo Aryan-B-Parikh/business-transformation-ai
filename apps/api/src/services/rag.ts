@@ -1,6 +1,6 @@
 /**
  * RAG retrieval service — TASK-008
- * Given project_id + query, return top-k relevant document_chunks
+ * Given projectId + query, return top-k relevant document_chunks
  * (vector cosine similarity, tenant-scoped, namespace per tenant 02 §5)
  *
  * DoD: Unit test with seeded chunks returns expected top-k ordering;
@@ -42,7 +42,14 @@ export function retrieveRag(params: {
   const candidates = getChunksByProject(projectId, orgId, docIdsForProject);
   if (candidates.length === 0) return [];
 
-  const scored: RagChunkResult[] = candidates.map((c) => ({
+  // Filter out any chunks that have missing or invalid embeddings
+  const validCandidates = candidates.filter(
+    (c) => c.embedding && Array.isArray(c.embedding) && c.embedding.length > 0
+  );
+
+  if (validCandidates.length === 0) return [];
+
+  const scored: RagChunkResult[] = validCandidates.map((c) => ({
     id: c.id,
     documentId: c.documentId,
     orgId: c.orgId,

@@ -8,12 +8,13 @@
  */
 
 import { Router, Response } from "express";
+import { getRepositories } from "../repositories";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
 import { listAiModelConfigs, updateAiModelConfig } from "../stores/aiModelConfigs";
 import { listArtifacts } from "../stores/artifacts";
 import { listAuditLogs } from "../stores/auditLogs";
-import { projects, workspaces } from "./workspaces";
+
 
 const router = Router();
 
@@ -27,17 +28,24 @@ router.get(
   "/admin/orgs/:orgId/usage",
   authenticate,
   authorize("org_admin"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = String(req.params.orgId);
     if (!isOrgAdmin(req, orgId)) {
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin can view usage" } });
       return;
     }
     // Mock usage metrics: count artifacts, workspaces, etc.
-    const wsCount = [...workspaces.values()].filter((w) => w.orgId === orgId).length;
-    const projCount = [...projects.values()].filter((p) => p.orgId === orgId).length;
+    const wss = await getRepositories().projects.listWorkspaces(orgId);
+    const wsCount = wss.length;
+    let projCount = 0;
     let artCount = 0;
-    for (const p of projects.values()) if (p.orgId === orgId) artCount += listArtifacts(p.id, orgId).length;
+    for (const w of wss) {
+      const projs = await getRepositories().projects.listProjectsByWorkspace(orgId, w.id);
+      projCount += projs.length;
+      for (const p of projs) {
+        artCount += listArtifacts(p.id, orgId).length;
+      }
+    }
     res.json({ orgId, workspaces: wsCount, projects: projCount, artifacts: artCount, period: "30d" });
   }
 );
@@ -47,7 +55,7 @@ router.get(
   "/admin/orgs/:orgId/audit-logs",
   authenticate,
   authorize("org_admin"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = String(req.params.orgId);
     if (!isOrgAdmin(req, orgId)) {
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin can view audit logs" } });
@@ -67,7 +75,7 @@ router.get(
   "/admin/orgs/:orgId/ai-models",
   authenticate,
   authorize("org_admin"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = String(req.params.orgId);
     if (!isOrgAdmin(req, orgId)) {
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin" } });
@@ -83,7 +91,7 @@ router.patch(
   "/admin/orgs/:orgId/ai-models/:module",
   authenticate,
   authorize("org_admin"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = String(req.params.orgId);
     const mod = String(req.params.module);
     if (!isOrgAdmin(req, orgId)) {
@@ -105,7 +113,7 @@ router.get(
   "/admin/system/health",
   authenticate,
   authorize("org_admin", "workspace_admin"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     // No org check, just health
     res.json({ status: "ok", version: "0.1.0", uptime: process.uptime(), checks: { db: "ok", vector: "ok", storage: "ok" } });
   }

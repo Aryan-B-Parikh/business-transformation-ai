@@ -1,10 +1,12 @@
 /**
- * Mock object storage — TASK-006
- * Simulates S3-compatible storage. In production would be S3/GCS/Azure.
- * Stores buffers in memory, generates signed URLs.
+ * Object storage adapter — Phase 5
+ * Connects to S3-compatible backend in production, falls back to memory for tests.
  */
 
 import { v4 as uuidv4 } from "uuid";
+import { getS3Client } from "./s3Client";
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 interface StoredFile {
   id: string;
@@ -13,59 +15,80 @@ interface StoredFile {
   mimetype: string;
   size: number;
   createdAt: string;
+  orgId: string;
 }
 
-const files = new Map<string, StoredFile>();
+const memoryFiles = new Map<string, StoredFile>();
 
-export function storeFile(buffer: Buffer, filename: string, mimetype: string): { fileId: string; storageUrl: string } {
+/**
+ * Stores a file. If S3 is configured, uploads to S3 with prefix <orgId>/documents/<fileId>
+ */
+export async function storeFile(orgId: string, buffer: Buffer, filename: string, mimetype: string): Promise<{ fileId: string; storageUrl: string }> {
   const fileId = uuidv4();
-  const stored: StoredFile = {
-    id: fileId,
-    buffer,
-    filename,
-    mimetype,
-    size: buffer.length,
-    createdAt: new Date().toISOString(),
-  };
-  files.set(fileId, stored);
-  // storageUrl as per 03_DATA_MODEL.md documents.storage_url
-  const storageUrl = `memory://documents/${fileId}/${encodeURIComponent(filename)}`;
-  return { fileId, storageUrl };
-}
+  const s3Client = getS3Client();
 
-export function getFile(fileId: string): StoredFile | undefined {
-  return files.get(fileId);
-}
+  if (s3Client) {
+    const bucket = process.env.S3_BUCKET!;
+    const key = `${orgId}/documents/${fileId}`;
+    
+    await s3Client.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: buffer,
+      ContentType: mimetype,
+      Metadata: { filename: Buffer.from(filename).toString('base64') } // safe encoding
+    }));
 
-export function getFileBuffer(fileId: string): Buffer | undefined {
-  return files.get(fileId)?.buffer;
+    return { fileId, storageUrl: `s3://${bucket}/${key}` };
+  } else {
+    // Memory fallback
+    memoryFiles.set(fileId, {
+      id: fileId,
+      buffer,
+      filename,
+      mimetype,
+      size: buffer.length,
+      createdAt: new Date().toISOString(),
+      orgId
+    });
+    return { fileId, storageUrl: `memory://documents/${fileId}/${encodeURIComponent(filename)}` };
+  }
 }
 
 /**
  * Generates a signed URL for retrieval.
- * In real system this would be a presigned S3 URL with expiry.
- * Here we return an API endpoint that is auth-protected and tenant-scoped.
- * Format: /api/v1/documents/:docId/file?token=...  — but for simplicity we return storageUrl
- * and also provide an API route that serves the file.
  */
-export function generateSignedUrl(documentId: string, _storageUrl: string): string {
-  // The actual file serving checks JWT + tenant isolation, so this URL is effectively signed via auth header.
-  return `/api/v1/documents/${documentId}/file`;
+export async function generateSignedUrl(documentId: string, orgId: string, storageUrl: string): Promise<string> {
+  const s3Client = getS3Client();
+  if (s3Client && storageUrl && storageUrl.startsWith("s3://")) {
+    const bucket = process.env.S3_BUCKET!;
+    // storageUrl = s3://<bucket>/<orgId>/documents/<fileId>
+    const prefix = `s3://${bucket}/`;
+    const key = storageUrl.slice(prefix.length);
+
+    // Tenant isolation verification: enforce that the generated URL belongs to the requesting orgId
+    if (!key.startsWith(`${orgId}/`)) {
+      throw new Error("Tenant isolation violation: Cannot generate signed URL for a different organization's object.");
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+    
+    // Expires in 15 minutes
+    return await getSignedUrl(s3Client, command, { expiresIn: 900 });
+  } else {
+    // Memory fallback: we return a virtual API endpoint just like before, but wait, the test relies on fetching it via /api/v1/documents/:id/file
+    // Memory fallback: we return a virtual API endpoint just like before
+    return `/api/v1/documents/${documentId}/file`;
+  }
 }
 
-export function resolveStorageUrl(storageUrl: string): StoredFile | undefined {
-  // storageUrl = memory://documents/<fileId>/...
-  const match = storageUrl.match(/memory:\/\/documents\/([^/]+)\//);
-  if (!match) return undefined;
-  return getFile(match[1]!);
+export function getMemoryFile(fileId: string): StoredFile | undefined {
+  return memoryFiles.get(fileId);
 }
 
 export function clearStorage(): void {
-  files.clear();
-}
-
-export function storageStats(): { count: number; totalBytes: number } {
-  let total = 0;
-  for (const f of files.values()) total += f.size;
-  return { count: files.size, totalBytes: total };
+  memoryFiles.clear();
 }

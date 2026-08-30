@@ -67,14 +67,24 @@ describe("ArtifactEditor", () => {
 
 describe("TASK-019 E2E: App artifact viewer integration", () => {
   it("App shows artifact viewer and version increment on edit/regenerate", async () => {
+    const mockFetch = vi.fn();
+    global.fetch = mockFetch as unknown as typeof fetch;
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) } as Response);
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [{ id: "art-1", version: 1, content: {} }] }) } as Response);
+
     const { App } = await import("../src/App");
-    const { render: r } = await import("@testing-library/react");
+    const { render: r, waitFor } = await import("@testing-library/react");
     const view = r(<App />);
-    expect(view.getByTestId("artifact-viewer")).toBeDefined();
+    await waitFor(() => {
+      expect(view.getByTestId("artifact-viewer")).toBeDefined();
+    });
     expect(view.getByTestId("artifact-version").textContent).toContain("Version: 1");
     // Click Edit Title
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: "art-1", version: 2, content: {} }) } as Response);
     fireEvent.click(view.getByTestId("edit-button"));
-    expect(view.getByTestId("artifact-version").textContent).toContain("Version: 2");
+    await waitFor(() => {
+      expect(view.getByTestId("artifact-version").textContent).toContain("Version: 2");
+    });
     // Regenerate
     const fb = view.getByTestId("feedback-input") as HTMLInputElement;
     fireEvent.change(fb, { target: { value: "feedback" } });

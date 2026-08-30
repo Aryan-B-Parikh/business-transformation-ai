@@ -21,7 +21,7 @@ export function assertTenant(orgId: string | undefined | null): string {
 /** App-layer filter — defense in depth even though RLS also enforces */
 export function tenantWhere(orgId: string | undefined, extra: Record<string, unknown> = {}) {
   const tenantId = assertTenant(orgId);
-  return { org_id: tenantId, ...extra } as Record<string, unknown>;
+  return { orgId: tenantId, ...extra } as Record<string, unknown>;
 }
 
 /**
@@ -33,14 +33,14 @@ export function tenantWhere(orgId: string | undefined, extra: Record<string, unk
  */
 export async function withTenant<T>(
   prisma: {
-    $transaction: (fn: (tx: unknown) => Promise<T>) => Promise<T>;
+    $transaction: <U>(fn: (tx: unknown) => Promise<U>) => Promise<U>;
     $executeRawUnsafe?: (sql: string, ...values: unknown[]) => Promise<unknown>;
   },
   orgId: string,
   fn: (tx: unknown) => Promise<T>
 ): Promise<T> {
   const tenantId = assertTenant(orgId);
-  return prisma.$transaction(async (tx: unknown) => {
+  return prisma.$transaction<T>(async (tx: unknown) => {
     const p = tx as {
       $executeRawUnsafe?: (sql: string, ...values: unknown[]) => Promise<unknown>;
     };
@@ -56,12 +56,12 @@ export async function withTenant<T>(
  * Client-side filtering simulation — used in unit tests to prove that without
  * tenant context, zero rows are returned (TASK-002 DoD).
  */
-export function applyTenantFilter<T extends { org_id: string }>(
+export function applyTenantFilter<T extends { orgId: string }>(
   rows: T[],
   orgId: string | undefined | null
 ): T[] {
   if (!orgId) return []; // RLS behaviour: no GUC => current_org_id() is null => zero rows
-  return rows.filter((r) => r.org_id === orgId);
+  return rows.filter((r) => r.orgId === orgId);
 }
 
 /** List of tables that MUST have RLS tenant_isolation policy */

@@ -4,13 +4,22 @@
  */
 
 import { Router, Request, Response } from "express";
-import { login, ssoCallback } from "../auth/service";
+import { login, ssoCallback, refreshAccessToken, logout } from "../auth/service";
 
 const router = Router();
 
 router.post("/auth/login", async (req: Request, res: Response) => {
   try {
     const result = await login(req.body);
+    if (result.refreshToken) {
+      res.cookie("refreshToken", result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+      delete result.refreshToken;
+    }
     res.json(result);
   } catch (err: unknown) {
     const e = err as Error & { status?: number; code?: string };
@@ -23,11 +32,52 @@ router.post("/auth/login", async (req: Request, res: Response) => {
 router.post("/auth/sso/callback", async (req: Request, res: Response) => {
   try {
     const result = await ssoCallback(req.body);
+    if (result.refreshToken) {
+      res.cookie("refreshToken", result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+      delete result.refreshToken;
+    }
     res.json(result);
   } catch (err: unknown) {
     const e = err as Error & { status?: number; code?: string };
     const status = e.status || 500;
     const code = e.code || (status === 401 ? "UNAUTHORIZED" : "BAD_REQUEST");
+    res.status(status).json({ error: { code, message: e.message } });
+  }
+});
+
+router.post("/auth/refresh", async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "No refresh token provided" } });
+    }
+    const result = await refreshAccessToken(refreshToken);
+    res.json(result);
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number; code?: string };
+    const status = e.status || 500;
+    const code = e.code || (status === 401 ? "UNAUTHORIZED" : "BAD_REQUEST");
+    res.status(status).json({ error: { code, message: e.message } });
+  }
+});
+
+router.post("/auth/logout", async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+    if (refreshToken) {
+      await logout(refreshToken);
+    }
+    res.clearCookie("refreshToken");
+    res.json({ success: true });
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number; code?: string };
+    const status = e.status || 500;
+    const code = e.code || "INTERNAL_ERROR";
     res.status(status).json({ error: { code, message: e.message } });
   }
 });

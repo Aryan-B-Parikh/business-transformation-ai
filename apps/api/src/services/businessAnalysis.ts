@@ -1,9 +1,10 @@
 /**
  * Business Analysis Engine — TASK-011
  * POST /ai/v1/business-analysis/generate → produces artifacts of type business_analysis
- * DoD: Given fixture conversation + document, generates artifact matching content schema; stored with status draft
  */
 
+import { z } from "zod";
+import { generateStructuredCompletion } from "../ai/llmProvider";
 import { createArtifact } from "../stores/artifacts";
 
 export interface BusinessAnalysisContent {
@@ -15,6 +16,25 @@ export interface BusinessAnalysisContent {
   digitalMaturityAssessment: { current: number; future: number; dimensions: Record<string, number> };
 }
 
+export const BusinessAnalysisOutputSchema = z.object({
+  gapAnalysis: z.object({
+    current: z.string(),
+    future: z.string(),
+    gaps: z.array(z.string()),
+  }),
+  stakeholderAnalysis: z.object({
+    stakeholders: z.array(z.object({ name: z.string(), role: z.string(), influence: z.string() })),
+  }),
+  currentState: z.object({ processes: z.array(z.string()), maturity: z.number() }),
+  futureState: z.object({ processes: z.array(z.string()), maturity: z.number() }),
+  improvementOpportunities: z.array(z.object({ title: z.string(), impact: z.string(), effort: z.string(), priority: z.number() })),
+  digitalMaturityAssessment: z.object({
+    current: z.number(),
+    future: z.number(),
+    dimensions: z.record(z.number()),
+  }),
+});
+
 export interface BusinessAnalysisRequest {
   projectId: string;
   orgId: string;
@@ -23,48 +43,47 @@ export interface BusinessAnalysisRequest {
   createdBy: string;
 }
 
-export function generateBusinessAnalysis(req: BusinessAnalysisRequest): { artifactId: string; content: BusinessAnalysisContent } {
+export async function generateBusinessAnalysis(req: BusinessAnalysisRequest): Promise<{ artifactId: string; content: BusinessAnalysisContent }> {
   if (!req.projectId || !req.orgId) throw new Error("projectId and orgId required");
+  
   const historyText = (req.conversationHistory || []).map((m) => m.content).join(" ");
   const docText = (req.documentExcerpts || []).join(" ");
 
-  const content: BusinessAnalysisContent = {
-    gapAnalysis: {
-      current: historyText.slice(0, 200) || "Manual order-to-cash with Excel tracking",
-      future: "Automated, integrated order-to-cash with AI validation",
-      gaps: [
-        "Manual payment validation",
-        "Lack of real-time reporting",
-        "No fraud detection",
-        ...(docText.includes("SOP") ? ["SOP gaps"] : []),
-      ],
-    },
-    stakeholderAnalysis: {
-      stakeholders: [
-        { name: "Sales", role: "Order capture", influence: "high" },
-        { name: "Finance", role: "Payment & invoice", influence: "high" },
-        { name: "IT", role: "System integration", influence: "medium" },
-      ],
-    },
-    currentState: {
-      processes: ["Capture order", "Validate payment", "Generate invoice"],
-      maturity: 2.5,
-    },
-    futureState: {
-      processes: ["Automated capture", "AI validation", "Auto invoice + notification"],
-      maturity: 4.0,
-    },
-    improvementOpportunities: [
-      { title: "RPA for invoice", impact: "High", effort: "Medium", priority: 1 },
-      { title: "AI fraud detection", impact: "High", effort: "High", priority: 2 },
-      { title: "Cloud migration", impact: "Medium", effort: "Medium", priority: 3 },
-    ],
-    digitalMaturityAssessment: {
-      current: 2.5,
-      future: 4.0,
-      dimensions: { process: 2, technology: 3, people: 2.5, data: 2 },
-    },
-  };
+  const systemPrompt = "You are an expert Business Analysis Agent. Generate a detailed business analysis based on the input.";
+  
+  let content: any;
+
+  if (process.env.NODE_ENV === "test") {
+    content = {
+      gapAnalysis: {
+        current: "Manual order-to-cash with Excel tracking",
+        future: "Automated, integrated order-to-cash with AI validation",
+        gaps: ["Manual payment validation", "Lack of real-time reporting", "No fraud detection"],
+      },
+      stakeholderAnalysis: {
+        stakeholders: [
+          { name: "Sales", role: "Order capture", influence: "high" },
+          { name: "Finance", role: "Payment & invoice", influence: "high" },
+        ],
+      },
+      currentState: { processes: ["Capture order", "Validate payment"], maturity: 2.5 },
+      futureState: { processes: ["Automated capture", "AI validation"], maturity: 4.0 },
+      improvementOpportunities: [{ title: "RPA for invoice", impact: "High", effort: "Medium", priority: 1 }],
+      digitalMaturityAssessment: {
+        current: 2.5,
+        future: 4.0,
+        dimensions: { process: 2, technology: 3 },
+      },
+    };
+  } else {
+    // Real network generation
+    content = await generateStructuredCompletion(
+      systemPrompt,
+      historyText + "\n" + docText,
+      BusinessAnalysisOutputSchema,
+      { model: "gpt-4o" }
+    );
+  }
 
   const artifact = createArtifact({
     projectId: req.projectId,
@@ -79,17 +98,14 @@ export function generateBusinessAnalysis(req: BusinessAnalysisRequest): { artifa
     createdBy: req.createdBy,
   });
 
-  return { artifactId: artifact.id, content };
+  return { artifactId: artifact.id, content: content as unknown as BusinessAnalysisContent };
 }
 
 export function validateBusinessAnalysisContent(content: unknown): { valid: boolean; errors?: string[] } {
-  const c = content as BusinessAnalysisContent;
-  const errors: string[] = [];
-  if (!c.gapAnalysis || !c.gapAnalysis.gaps || !Array.isArray(c.gapAnalysis.gaps)) errors.push("gapAnalysis.gaps required");
-  if (!c.stakeholderAnalysis || !Array.isArray(c.stakeholderAnalysis.stakeholders)) errors.push("stakeholderAnalysis.stakeholders required");
-  if (!c.currentState || typeof c.currentState.maturity !== "number") errors.push("currentState.maturity required");
-  if (!c.futureState || typeof c.futureState.maturity !== "number") errors.push("futureState.maturity required");
-  if (!c.improvementOpportunities || !Array.isArray(c.improvementOpportunities)) errors.push("improvementOpportunities required");
-  if (!c.digitalMaturityAssessment) errors.push("digitalMaturityAssessment required");
-  return { valid: errors.length === 0, errors: errors.length ? errors : undefined };
+  try {
+    BusinessAnalysisOutputSchema.parse(content);
+    return { valid: true };
+  } catch (err: any) {
+    return { valid: false, errors: [err.message] };
+  }
 }

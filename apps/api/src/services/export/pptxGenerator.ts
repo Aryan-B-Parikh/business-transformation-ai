@@ -56,7 +56,7 @@ export async function generatePptx(
     });
 
     const entries = Object.entries(item).slice(0, 6); // Top entries per slide
-    const rows: { text: string; options?: unknown }[][] = [
+    const rows: any[] = [
       [
         { text: "Attribute", options: { bold: true, fill: "0284C7", color: "FFFFFF" } },
         { text: "Description / Output", options: { bold: true, fill: "0284C7", color: "FFFFFF" } },

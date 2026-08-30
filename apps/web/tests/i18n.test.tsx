@@ -4,7 +4,7 @@
  */
 
 import { t } from "@bta/shared";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { describe, it, expect } from "vitest";
 import { App } from "../src/App";
@@ -18,6 +18,7 @@ describe("TASK-030: i18n UI", () => {
 
   it("App LanguageSwitcher changes UI strings", async () => {
     render(<App />);
+    await waitFor(() => expect(screen.getByTestId("app")).toBeDefined());
     expect(screen.getByText("Business Transformation AI")).toBeDefined();
     expect(screen.getByText("1. Upload Business Documents")).toBeDefined();
     // Switch to Spanish
@@ -30,16 +31,18 @@ describe("TASK-030: i18n UI", () => {
     expect(screen.getByText("IA de Transformation d'Entreprise")).toBeDefined();
   });
 
-  it("App shows current lang indicator", () => {
+  it("App shows current lang indicator", async () => {
     render(<App />);
-    expect(screen.getByTestId("current-lang").textContent).toContain("en");
+    await waitFor(() => expect(screen.getByTestId("app")).toBeDefined());
+    expect(screen.getByTestId("current-lang").textContent).toContain("Current: en");
     const select = screen.getByTestId("lang-select") as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "hi" } });
     expect(screen.getByTestId("current-lang").textContent).toContain("hi");
   });
 
-  it("All supported languages are available in switcher", () => {
+  it("All supported languages are available in switcher", async () => {
     render(<App />);
+    await waitFor(() => expect(screen.getByTestId("app")).toBeDefined());
     const select = screen.getByTestId("lang-select") as HTMLSelectElement;
     expect(select.options.length).toBeGreaterThanOrEqual(10);
     const values = Array.from(select.options).map((o) => o.value);

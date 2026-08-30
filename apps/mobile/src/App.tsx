@@ -8,11 +8,7 @@
 import { API_BASE } from "@bta/shared";
 import * as React from "react";
 
-// Mock React Native components as simple React wrappers for tsc build (no native runtime required)
-const View = (props: React.PropsWithChildren<{ style?: unknown; testID?: string }>) => <div data-testid={props.testID} style={props.style as React.CSSProperties}>{props.children}</div>;
-const Text = (props: React.PropsWithChildren<{ style?: unknown; testID?: string }>) => <span data-testid={props.testID} style={props.style as React.CSSProperties}>{props.children}</span>;
-const TextInput = (props: React.InputHTMLAttributes<HTMLInputElement> & { testID?: string }) => <input {...props} data-testid={props.testID} />;
-const Button = (props: { title: string; onPress?: () => void; testID?: string }) => <button data-testid={props.testID} onClick={props.onPress}>{props.title}</button>;
+import { View, Text, TextInput, Button } from "react-native";
 
 export const APP_NAME = "Business Transformation AI";
 export const API_BASE_URL = API_BASE;

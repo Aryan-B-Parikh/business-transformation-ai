@@ -5,5 +5,8 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     include: ["tests/**/*.test.tsx", "src/**/*.test.tsx"],
+    alias: {
+      "react-native": "react-native-web"
+    }
   },
 });

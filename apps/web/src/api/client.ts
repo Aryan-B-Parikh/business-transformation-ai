@@ -58,3 +58,35 @@ export async function getConversation(conversationId: string, token: string): Pr
   const res = await apiFetch(`/conversations/${conversationId}`, { token });
   return res.json();
 }
+
+// Artifacts
+export async function listArtifacts(projectId: string, token: string): Promise<any> {
+  const res = await apiFetch(`/projects/${projectId}/artifacts`, { token });
+  if (!res.ok) throw new Error("List artifacts failed");
+  return res.json();
+}
+
+export async function getArtifact(artifactId: string, token: string): Promise<any> {
+  const res = await apiFetch(`/artifacts/${artifactId}`, { token });
+  if (!res.ok) throw new Error("Get artifact failed");
+  return res.json();
+}
+
+export async function updateArtifact(artifactId: string, updates: any, token: string): Promise<any> {
+  const res = await apiFetch(`/artifacts/${artifactId}`, { method: "PATCH", token, body: JSON.stringify(updates) });
+  if (!res.ok) throw new Error("Update artifact failed");
+  return res.json();
+}
+
+// Journey & Dashboard
+export async function getJourneyState(projectId: string, token: string): Promise<any> {
+  const res = await apiFetch(`/projects/${projectId}/journey`, { token });
+  if (!res.ok) throw new Error("Get journey state failed");
+  return res.json();
+}
+
+export async function getProjectActivity(projectId: string, token: string): Promise<any> {
+  const res = await apiFetch(`/projects/${projectId}/activity`, { token });
+  if (!res.ok) throw new Error("Get project activity failed");
+  return res.json();
+}

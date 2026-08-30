@@ -24,10 +24,16 @@ describe("Dashboard", () => {
   });
 
   it("App includes dashboard section (TASK-022)", async () => {
+    const mockFetch = vi.fn();
+    global.fetch = mockFetch as unknown as typeof fetch;
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: [] }) } as Response);
+
     const { App } = await import("../src/App");
-    const { render: r } = await import("@testing-library/react");
+    const { render: r, waitFor, screen } = await import("@testing-library/react");
     const view = r(<App />);
+    await waitFor(() => {
+      expect(view.getByTestId("dashboard")).toBeDefined();
+    });
     expect(view.getByText("5. Transformation Dashboard (TASK-022)")).toBeDefined();
-    expect(view.getByTestId("dashboard")).toBeDefined();
   });
 });

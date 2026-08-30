@@ -1,7 +1,7 @@
 /**
  * Document parsing pipeline — TASK-007
  * Background worker: extract text from PDF/DOCX/PPTX, chunk, generate embeddings,
- * write to document_chunks, update parsed_status.
+ * write to document_chunks, update parsedStatus.
  *
  * For v1 we do deterministic in-memory parsing without heavy PDF libraries:
  * - PDF: treat buffer as text + strip non-printable, split
@@ -11,6 +11,20 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+
+export class ExtractionLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExtractionLimitError";
+  }
+}
+
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TimeoutError";
+  }
+}
 
 /** Document chunk produced by parser */
 export interface DocumentChunk {
@@ -155,7 +169,7 @@ export function chunkText(text: string, chunkSize = 500, overlap = 50): { chunk:
 
 /**
  * Full pipeline: extract → chunk → embed → store
- * Updates document's parsed_status via callback
+ * Updates document's parsedStatus via callback
  * Returns chunks. DoD: >0 chunks, embeddings non-null, within 60s (here sync, <100ms)
  */
 export async function processDocument(params: {
@@ -165,23 +179,56 @@ export async function processDocument(params: {
   filename: string;
 }): Promise<DocumentChunk[]> {
   const { documentId, orgId, buffer, filename } = params;
-  const { text } = extractText(buffer, filename);
-  const pieces = chunkText(text);
-  if (pieces.length === 0) {
-    throw new Error("No text extracted");
+
+  // Security: Hard limit on buffer size (10MB) before even parsing
+  if (buffer.length > 10 * 1024 * 1024) {
+    throw new ExtractionLimitError("Document buffer exceeds 10MB limit");
   }
-  const result: DocumentChunk[] = pieces.map(({ chunk, pageRef }) => ({
-    id: uuidv4(),
-    documentId,
-    orgId,
-    chunkText: chunk,
-    embedding: embed(chunk),
-    pageRef,
-  }));
-  // Store
-  chunks.set(documentId, result);
-  for (const c of result) byId.set(c.id, c);
-  return result;
+
+  const TIMEOUT_MS = process.env.NODE_ENV === 'test' && process.env.TEST_FAST_TIMEOUT 
+    ? parseInt(process.env.TEST_FAST_TIMEOUT) 
+    : 30000;
+
+  const executeParsing = async () => {
+    // Simulate real parser async execution (or a slow worker for tests)
+    const delay = process.env.TEST_SLOW_PARSER ? parseInt(process.env.TEST_SLOW_PARSER) : 0;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    
+    const { text } = extractText(buffer, filename);
+    
+    // Security: Hard limit on extracted text to prevent embedding explosion/OOM
+    if (text.length > 500000) {
+      throw new ExtractionLimitError("Extracted text exceeds 500,000 characters limit");
+    }
+
+    const pieces = chunkText(text);
+    if (pieces.length === 0) {
+      throw new Error("No text extracted");
+    }
+    const result: DocumentChunk[] = pieces.map(({ chunk, pageRef }) => ({
+      id: uuidv4(),
+      documentId,
+      orgId,
+      chunkText: chunk,
+      embedding: embed(chunk),
+      pageRef,
+    }));
+    // Store
+    chunks.set(documentId, result);
+    for (const c of result) byId.set(c.id, c);
+    return result;
+  };
+
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TimeoutError(`Document processing timed out after ${TIMEOUT_MS}ms`)), TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([executeParsing(), timeoutPromise]);
+  } finally {
+    clearTimeout(timer!);
+  }
 }
 
 /** Get chunk by id (for vector store) */

@@ -18,7 +18,7 @@ describe("TASK-031: Security", () => {
     expect(res.headers["x-frame-options"]).toBeDefined();
   });
 
-  it("JWT cannot be spoofed with different org_id", async () => {
+  it("JWT cannot be spoofed with different orgId", async () => {
     const login = await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain });
     const token = login.body.token as string;
     // Try to tamper token: decode, change orgId, re-sign with wrong secret should fail

@@ -3,8 +3,8 @@
  * without tenant context returns zero rows for a non-empty table.
  *
  * This test validates tenant isolation at two levels:
- * 1) Static: migration SQL contains RLS policies for every org_id table
- * 2) Dynamic (unit): applyTenantFilter / tenantWhere / withTenant enforce org_id
+ * 1) Static: migration SQL contains RLS policies for every orgId table
+ * 2) Dynamic (unit): applyTenantFilter / tenantWhere / withTenant enforce orgId
  *
  * For a live DB, the same logic is enforced by Postgres RLS (see prisma/migrations/.../rls/migration.sql).
  * A live integration test (requires DATABASE_URL) is included but skipped if no DB is available.
@@ -40,7 +40,7 @@ describe("RLS migration — static checks (TASK-002)", () => {
     expect(sql).toContain('CONSTRAINT "artifacts_no_auto_approve"');
   });
 
-  it("RLS migration enables RLS and creates tenant_isolation policy on every org_id table", () => {
+  it("RLS migration enables RLS and creates tenant_isolation policy on every orgId table", () => {
     const sql = fs.readFileSync(rlsPath, "utf8");
     // helper function
     expect(sql).toContain("CREATE OR REPLACE FUNCTION current_org_id()");
@@ -51,14 +51,14 @@ describe("RLS migration — static checks (TASK-002)", () => {
       expect(sql).toContain(`ALTER TABLE "${tbl}" ENABLE ROW LEVEL SECURITY`);
       // check policy creation (allow preceding DROP IF EXISTS)
       expect(sql).toContain(`CREATE POLICY tenant_isolation ON "${tbl}"`);
-      // policy must use org_id = current_org_id()
+      // policy must use orgId = current_org_id()
       // we check the USING clause appears after the table name
       const idx = sql.indexOf(`CREATE POLICY tenant_isolation ON "${tbl}"`);
       const slice = sql.slice(idx, idx + 500);
       expect(slice).toContain(`"org_id" = current_org_id()`);
     }
 
-    // organizations must NOT have RLS (no org_id)
+    // organizations must NOT have RLS (no orgId)
     expect(sql).not.toContain(`ALTER TABLE "organizations" ENABLE ROW LEVEL SECURITY`);
   });
 
@@ -85,9 +85,9 @@ describe("Tenant isolation — unit behaviour (TASK-002 DoD: zero rows without t
   const orgA = "00000000-0000-0000-0000-0000000000aa";
   const orgB = "00000000-0000-0000-0000-0000000000bb";
   const rows = [
-    { id: "1", org_id: orgA, name: "Project Alpha" },
-    { id: "2", org_id: orgA, name: "Project Beta" },
-    { id: "3", org_id: orgB, name: "Project Gamma" },
+    { id: "1", orgId: orgA, name: "Project Alpha" },
+    { id: "2", orgId: orgA, name: "Project Beta" },
+    { id: "3", orgId: orgB, name: "Project Gamma" },
   ];
 
   it("applyTenantFilter returns zero rows when orgId is missing (simulates RLS without GUC)", () => {
@@ -99,13 +99,13 @@ describe("Tenant isolation — unit behaviour (TASK-002 DoD: zero rows without t
   it("applyTenantFilter isolates to the requested tenant", () => {
     expect(applyTenantFilter(rows, orgA)).toHaveLength(2);
     expect(applyTenantFilter(rows, orgB)).toHaveLength(1);
-    expect(applyTenantFilter(rows, orgA).every((r) => r.org_id === orgA)).toBe(true);
+    expect(applyTenantFilter(rows, orgA).every((r) => r.orgId === orgA)).toBe(true);
   });
 
   it("cross-tenant leakage test proves isolation (task requirement)", () => {
     // Query as orgA must not see orgB rows
     const asOrgA = applyTenantFilter(rows, orgA);
-    expect(asOrgA.find((r) => r.org_id === orgB)).toBeUndefined();
+    expect(asOrgA.find((r) => r.orgId === orgB)).toBeUndefined();
     // Without tenant context, non-empty table returns zero rows
     const withoutTenant = applyTenantFilter(rows, undefined);
     expect(withoutTenant).toEqual([]);
@@ -113,11 +113,11 @@ describe("Tenant isolation — unit behaviour (TASK-002 DoD: zero rows without t
     expect(rows.length).toBeGreaterThan(0); // table is non-empty, but filtered result is empty
   });
 
-  it("tenantWhere throws when orgId missing and adds org_id to query", () => {
+  it("tenantWhere throws when orgId missing and adds orgId to query", () => {
     expect(() => tenantWhere(undefined)).toThrow(/org_id is required/);
     expect(() => tenantWhere(null as unknown as string)).toThrow();
-    expect(tenantWhere(orgA)).toEqual({ org_id: orgA });
-    expect(tenantWhere(orgA, { status: "active" })).toEqual({ org_id: orgA, status: "active" });
+    expect(tenantWhere(orgA)).toEqual({ orgId: orgA });
+    expect(tenantWhere(orgA, { status: "active" })).toEqual({ orgId: orgA, status: "active" });
   });
 
   it("withTenant sets parameterized GUC then delegates to fn (mock prisma)", async () => {

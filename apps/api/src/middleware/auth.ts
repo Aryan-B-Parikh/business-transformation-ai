@@ -1,7 +1,7 @@
 /**
  * Auth middleware — TASK-003 + TASK-004
  * Extracts Bearer JWT, verifies, attaches req.user.
- * Tenant (org_id) is resolved from JWT — never from client params (02 §5).
+ * Tenant (orgId) is resolved from JWT — never from client params (02 §5).
  * Returns 401 with { error: { code, message } } on failure per 04_API_SPEC.md § Conventions.
  */
 

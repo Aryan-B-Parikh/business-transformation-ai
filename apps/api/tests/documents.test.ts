@@ -79,9 +79,9 @@ describe("TASK-006: File upload + storage", () => {
     const status = await request(app).get(`/api/v1/documents/${res.body.id}/status`).set("Authorization", `Bearer ${tokenA}`);
     expect(status.status).toBe(200);
     expect(status.body.id).toBe(res.body.id);
-    expect(["pending", "parsed"]).toContain(status.body.parsed_status);
+    expect(["pending", "parsed"]).toContain(status.body.parsedStatus);
     // If sync, should be parsed with chunkCount >0
-    if (status.body.parsed_status === "parsed") expect(status.body.chunkCount).toBeGreaterThan(0);
+    if (status.body.parsedStatus === "parsed") expect(status.body.chunkCount).toBeGreaterThan(0);
   });
 
   it("POST — DOCX upload succeeds", async () => {
@@ -146,7 +146,7 @@ describe("TASK-006: File upload + storage", () => {
     const pdf = samplePdfBuffer(content);
     const up = await request(app).post(`/api/v1/projects/${projectId}/documents?sync=true`).set("Authorization", `Bearer ${tokenA}`).attach("file", pdf, { filename: "signed.pdf", contentType: "application/pdf" });
     const signedUrl = up.body.signedUrl as string;
-    expect(signedUrl).toBe(`/api/v1/documents/${up.body.id}/file`);
+    expect(up.body.signedUrl).toBe(`/api/v1/documents/${up.body.id}/file`);
     const fileRes = await request(app).get(signedUrl).set("Authorization", `Bearer ${tokenA}`);
     expect(fileRes.status).toBe(200);
     // Body should contain our content (may be in text or body buffer depending on content-type)

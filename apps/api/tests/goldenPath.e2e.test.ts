@@ -1,0 +1,54 @@
+import { describe, it, expect } from "vitest";
+import request from "supertest";
+import { createApp } from "../src/app";
+import { generateToken } from "../src/auth/jwt";
+
+describe("Golden Path E2E (Phase 29)", () => {
+  const app = createApp();
+
+  it("should execute the full golden path: Org -> Workspace -> Project -> Document -> Chat -> Artifact -> Dashboard", async () => {
+    const token = generateToken({
+      userId: "u-e2e",
+      orgId: "org-e2e",
+      role: "org_admin",
+      email: "e2e@example.com"
+    });
+
+    // 1. Create Workspace
+    const wsRes = await request(app)
+      .post("/api/v1/workspaces")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "E2E Workspace" });
+    expect(wsRes.status).toBe(201);
+    const workspaceId = wsRes.body.id;
+
+    // 2. Create Project
+    const projRes = await request(app)
+      .post(`/api/v1/workspaces/${workspaceId}/projects`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "E2E Project", description: "Integration testing" });
+    expect(projRes.status).toBe(201);
+    const projectId = projRes.body.id;
+
+    // 3. Document
+    const docRes = await request(app)
+      .post(`/api/v1/projects/${projectId}/documents`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ filename: "e2e.pdf", docType: "requirements", fileSize: 1024 });
+    expect(docRes.status).toBe(201);
+
+    // 4. Artifact Generation
+    const artRes = await request(app)
+      .post(`/api/v1/projects/${projectId}/artifacts/generate`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ type: "architecture_hld" });
+    expect(artRes.status).toBe(201);
+
+    // 5. Dashboard
+    const dashRes = await request(app)
+      .get(`/api/v1/projects/${projectId}/dashboard`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(dashRes.status).toBe(200);
+    expect(dashRes.body.digital_maturity).toBeDefined();
+  });
+});

@@ -49,6 +49,8 @@ export interface PrismaClientType {
     create: (args: unknown) => Promise<ProjectEntity>;
     findFirst: (args: unknown) => Promise<ProjectEntity | null>;
     findMany: (args: unknown) => Promise<ProjectEntity[]>;
+    update: (args: unknown) => Promise<ProjectEntity>;
+    delete: (args: unknown) => Promise<ProjectEntity>;
   };
   projectMember: {
     create: (args: unknown) => Promise<ProjectMemberEntity>;
@@ -100,12 +102,12 @@ export interface PrismaClientType {
 export class PostgresProjectRepository implements IProjectAggregateRepository {
   constructor(private prisma: PrismaClientType) {}
 
-  async createWorkspace(orgId: string, data: { name: string; description?: string }): Promise<WorkspaceEntity> {
+  async createWorkspace(orgId: string, data: { name: string; description?: string; createdBy: string }): Promise<WorkspaceEntity> {
     assertTenant(orgId);
-    return withTenant(this.prisma, orgId, async (tx: unknown) => {
+    return withTenant<WorkspaceEntity>(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.workspace.create({
-        data: { org_id: orgId, name: data.name, description: data.description },
+        data: { orgId, name: data.name, description: data.description, createdBy: data.createdBy },
       });
     });
   }
@@ -114,7 +116,7 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.workspace.findFirst({ where: { id, org_id: orgId } });
+      return p.workspace.findFirst({ where: { id, orgId: orgId } });
     });
   }
 
@@ -122,7 +124,7 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.workspace.findMany({ where: { org_id: orgId } });
+      return p.workspace.findMany({ where: { orgId: orgId } });
     });
   }
 
@@ -136,8 +138,8 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
       const p = tx as PrismaClientType;
       return p.project.create({
         data: {
-          org_id: orgId,
-          workspace_id: workspaceId,
+          orgId: orgId,
+          workspaceId: workspaceId,
           name: data.name,
           description: data.description,
           status: "active",
@@ -150,7 +152,7 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.project.findFirst({ where: { id, org_id: orgId } });
+      return p.project.findFirst({ where: { id, orgId: orgId } });
     });
   }
 
@@ -158,7 +160,7 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.project.findMany({ where: { org_id: orgId, workspace_id: workspaceId } });
+      return p.project.findMany({ where: { orgId: orgId, workspaceId: workspaceId } });
     });
   }
 
@@ -167,7 +169,7 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.projectMember.create({
-        data: { org_id: orgId, project_id: projectId, user_id: userId, role },
+        data: { orgId: orgId, projectId: projectId, userId: userId, role },
       });
     });
   }
@@ -176,7 +178,28 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.projectMember.findMany({ where: { org_id: orgId, project_id: projectId } });
+      return p.projectMember.findMany({ where: { orgId: orgId, projectId: projectId } });
+    });
+  }
+
+  async updateProject(orgId: string, id: string, updates: { name?: string; description?: string | null; status?: "active" | "archived" }): Promise<ProjectEntity> {
+    assertTenant(orgId);
+    return withTenant(this.prisma, orgId, async (tx: unknown) => {
+      const p = tx as PrismaClientType;
+      return p.project.update({
+        where: { id, orgId: orgId },
+        data: updates
+      });
+    });
+  }
+
+  async deleteProject(orgId: string, id: string): Promise<void> {
+    assertTenant(orgId);
+    await withTenant(this.prisma, orgId, async (tx: unknown) => {
+      const p = tx as PrismaClientType;
+      await p.project.delete({
+        where: { id, orgId: orgId }
+      });
     });
   }
 }
@@ -192,7 +215,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
       title: string;
       content: ArtifactContent;
       status?: ArtifactStatus;
-      created_by?: string;
+      createdBy?: string;
     }
   ): Promise<ArtifactEntity> {
     assertTenant(orgId);
@@ -200,14 +223,14 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
       const p = tx as PrismaClientType;
       return p.artifact.create({
         data: {
-          org_id: orgId,
-          project_id: projectId,
+          orgId: orgId,
+          projectId: projectId,
           type: data.type,
           title: data.title,
           content: data.content,
           status: data.status ?? "draft",
           version: 1,
-          created_by: data.created_by,
+          createdBy: data.createdBy,
         },
       });
     });
@@ -217,7 +240,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.artifact.findFirst({ where: { id, org_id: orgId } });
+      return p.artifact.findFirst({ where: { id, orgId: orgId } });
     });
   }
 
@@ -225,7 +248,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.artifact.findMany({ where: { org_id: orgId, project_id: projectId } });
+      return p.artifact.findMany({ where: { orgId: orgId, projectId: projectId } });
     });
   }
 
@@ -236,20 +259,24 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
       content?: ArtifactContent;
       title?: string;
       change_reason?: string;
-      created_by?: string;
+      createdBy?: string;
       status?: ArtifactStatus;
+      expectedVersion?: number;
     }
   ): Promise<ArtifactEntity> {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      const current = await p.artifact.findFirst({ where: { id, org_id: orgId } });
+      const current = await p.artifact.findFirst({ where: { id, orgId: orgId } });
       if (!current) throw new Error("Artifact not found");
+      if (updates.expectedVersion !== undefined && current.version !== updates.expectedVersion) {
+        throw new Error("Concurrency Conflict: Artifact version mismatch");
+      }
 
       return p.artifact.create({
         data: {
-          org_id: orgId,
-          project_id: current.project_id,
+          orgId: orgId,
+          projectId: current.projectId,
           type: current.type,
           title: updates.title ?? current.title,
           content: updates.content ?? current.content,
@@ -257,7 +284,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
           version: current.version + 1,
           parent_id: current.id,
           change_reason: updates.change_reason,
-          created_by: updates.created_by ?? current.created_by,
+          createdBy: updates.createdBy ?? current.createdBy,
         },
       });
     });
@@ -279,7 +306,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.artifactComment.create({
-        data: { org_id: orgId, artifact_id: artifactId, user_id: userId, content, status: "open" },
+        data: { orgId: orgId, artifactId: artifactId, userId: userId, content, status: "open" },
       });
     });
   }
@@ -288,7 +315,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.artifactComment.findMany({ where: { org_id: orgId, artifact_id: artifactId } });
+      return p.artifactComment.findMany({ where: { orgId: orgId, artifactId: artifactId } });
     });
   }
 }
@@ -312,8 +339,8 @@ export class PostgresTransformationRepository implements ITransformationAggregat
     assertTenant(orgId);
     return {
       id: "stage-" + Date.now(),
-      org_id: orgId,
-      project_id: projectId,
+      orgId: orgId,
+      projectId: projectId,
       stage,
       status,
       entered_at: new Date(),
@@ -334,8 +361,8 @@ export class PostgresTransformationRepository implements ITransformationAggregat
       const p = tx as PrismaClientType;
       await p.maturitySnapshot.create({
         data: {
-          org_id: orgId,
-          project_id: projectId,
+          orgId: orgId,
+          projectId: projectId,
           score: snapshot.digital_maturity.overall,
           dimensions: snapshot.digital_maturity.dimensions,
           model_version: snapshot.formula_version,
@@ -350,7 +377,7 @@ export class PostgresTransformationRepository implements ITransformationAggregat
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       const snap = (await p.maturitySnapshot.findFirst({
-        where: { org_id: orgId, project_id: projectId },
+        where: { orgId: orgId, projectId: projectId },
       })) as { dimensions?: unknown; score?: number; model_version?: string } | null;
       if (!snap || !snap.dimensions) return null;
       return {
@@ -382,12 +409,12 @@ export class PostgresDocumentRepository implements IDocumentAggregateRepository 
       const p = tx as PrismaClientType;
       return p.document.create({
         data: {
-          org_id: orgId,
-          project_id: projectId,
+          orgId: orgId,
+          projectId: projectId,
           filename: data.filename,
           doc_type: data.docType,
           file_size: data.fileSize,
-          parsed_status: "pending",
+          parsedStatus: "pending",
           storage_key: data.storageKey,
         },
       });
@@ -398,7 +425,7 @@ export class PostgresDocumentRepository implements IDocumentAggregateRepository 
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.document.findFirst({ where: { id, org_id: orgId } });
+      return p.document.findFirst({ where: { id, orgId: orgId } });
     });
   }
 
@@ -406,7 +433,7 @@ export class PostgresDocumentRepository implements IDocumentAggregateRepository 
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.document.findMany({ where: { org_id: orgId, project_id: projectId } });
+      return p.document.findMany({ where: { orgId: orgId, projectId: projectId } });
     });
   }
 
@@ -416,7 +443,7 @@ export class PostgresDocumentRepository implements IDocumentAggregateRepository 
       const p = tx as PrismaClientType;
       return p.document.update({
         where: { id },
-        data: { parsed_status: status },
+        data: { parsedStatus: status },
       });
     });
   }
@@ -426,14 +453,14 @@ export class PostgresDocumentRepository implements IDocumentAggregateRepository 
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       const data = chunksData.map((c) => ({
-        org_id: orgId,
-        document_id: documentId,
+        orgId: orgId,
+        documentId: documentId,
         chunk_index: c.chunkIndex,
         content: c.content,
         page_number: c.pageNumber,
       }));
       await p.documentChunk.createMany({ data });
-      return p.documentChunk.findMany({ where: { org_id: orgId, document_id: documentId } });
+      return p.documentChunk.findMany({ where: { orgId: orgId, documentId: documentId } });
     });
   }
 
@@ -441,7 +468,7 @@ export class PostgresDocumentRepository implements IDocumentAggregateRepository 
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      const chunks = await p.documentChunk.findMany({ where: { org_id: orgId } });
+      const chunks = await p.documentChunk.findMany({ where: { orgId: orgId } });
       return chunks.slice(0, topK).map((c, i) => ({ ...c, score: 0.95 - i * 0.05 }));
     });
   }
@@ -455,7 +482,7 @@ export class PostgresCollaborationRepository implements ICollaborationAggregateR
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.artifactApproval.create({
-        data: { org_id: orgId, artifact_id: artifactId, user_id: userId, status, comment },
+        data: { orgId: orgId, artifactId: artifactId, userId: userId, status, comment },
       });
     });
   }
@@ -464,7 +491,7 @@ export class PostgresCollaborationRepository implements ICollaborationAggregateR
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.artifactApproval.findMany({ where: { org_id: orgId, artifact_id: artifactId } });
+      return p.artifactApproval.findMany({ where: { orgId: orgId, artifactId: artifactId } });
     });
   }
 
@@ -473,7 +500,7 @@ export class PostgresCollaborationRepository implements ICollaborationAggregateR
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.notification.create({
-        data: { org_id: orgId, user_id: userId, title, body, read: false },
+        data: { orgId: orgId, userId: userId, title, body, read: false },
       });
     });
   }
@@ -482,7 +509,7 @@ export class PostgresCollaborationRepository implements ICollaborationAggregateR
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.notification.findMany({ where: { org_id: orgId, user_id: userId } });
+      return p.notification.findMany({ where: { orgId: orgId, userId: userId } });
     });
   }
 
@@ -505,12 +532,12 @@ export class PostgresWebhookRepository implements IWebhookAggregateRepository {
     assertTenant(orgId);
     return {
       id: "wh-" + Date.now(),
-      org_id: orgId,
-      workspace_id: workspaceId,
+      orgId: orgId,
+      workspaceId: workspaceId,
       url: data.url,
       events: data.events,
       secret: data.secret ?? null,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
   }
 
@@ -528,13 +555,13 @@ export class PostgresWebhookRepository implements IWebhookAggregateRepository {
     assertTenant(orgId);
     return {
       id: "evt-" + Date.now(),
-      org_id: orgId,
+      orgId: orgId,
       event_type: eventType,
       aggregate_id: aggregateId,
       payload,
       status: "pending",
       attempt_count: 0,
-      created_at: new Date(),
+      createdAt: new Date(),
     };
   }
 
@@ -554,8 +581,8 @@ export class PostgresGovernanceRepository implements IGovernanceAggregateReposit
       const p = tx as PrismaClientType;
       return p.auditLog.create({
         data: {
-          org_id: orgId,
-          actor_id: actorId,
+          orgId: orgId,
+          actorId: actorId,
           action,
           resource_type: resourceType,
           resource_id: resourceId,
@@ -569,7 +596,7 @@ export class PostgresGovernanceRepository implements IGovernanceAggregateReposit
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.auditLog.findMany({ where: { org_id: orgId } });
+      return p.auditLog.findMany({ where: { orgId: orgId } });
     });
   }
 
@@ -578,9 +605,9 @@ export class PostgresGovernanceRepository implements IGovernanceAggregateReposit
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.aiModelConfig.upsert({
-        where: { org_id_module: { org_id: orgId, module } },
+        where: { org_id_module: { orgId: orgId, module } },
         update: config,
-        create: { org_id: orgId, module, ...config },
+        create: { orgId: orgId, module, ...config },
       });
     });
   }
@@ -589,7 +616,7 @@ export class PostgresGovernanceRepository implements IGovernanceAggregateReposit
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
-      return p.aiModelConfig.findFirst({ where: { org_id: orgId, module } });
+      return p.aiModelConfig.findFirst({ where: { orgId: orgId, module } });
     });
   }
 }
