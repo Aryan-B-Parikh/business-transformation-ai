@@ -12,6 +12,8 @@ export interface AuthResult { token: string; refreshToken?: string; user: { id: 
 type UserRecord = { id: string; orgId: string; email: string; name: string; role: string; passwordHash?: string | null; ssoProvider?: string | null };
 function authError(message: string, status = 401, code = "UNAUTHORIZED") { const e = new Error(message) as Error & { status?: number; code?: string }; e.status = status; e.code = code; return e; }
 function issue(user: UserRecord, refreshToken?: string): AuthResult { return { token: signToken({ userId: user.id, orgId: user.orgId, role: user.role, email: user.email }), refreshToken, user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role } }; }
+function makeProductionRefreshToken(orgId: string) { return `${orgId}.${crypto.randomBytes(32).toString("hex")}`; }
+function splitProductionRefreshToken(value: string) { const i = value.indexOf("."); if (i < 1) throw authError("Invalid refresh token"); return { orgId: value.slice(0, i), secret: value.slice(i + 1) }; }
 
 async function productionUserByEmail(email: string, orgId: string): Promise<UserRecord | null> {
   return withTenant(prisma as never, orgId, async (tx: unknown) => {
@@ -26,10 +28,8 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
     if (!req.orgId) throw authError("orgId is required for tenant-scoped authentication", 400, "ORG_ID_REQUIRED");
     const user = await productionUserByEmail(req.email, req.orgId);
     if (!user || !user.passwordHash || !(await bcrypt.compare(req.password, user.passwordHash))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
-    const refreshToken = crypto.randomBytes(32).toString("hex"), hash = crypto.createHash("sha256").update(refreshToken).digest("hex");
-    await withTenant(prisma as never, req.orgId, async (tx: unknown) => {
-      await (tx as any).$executeRawUnsafe("INSERT INTO refresh_tokens (id,user_id,org_id,token_hash,expires_at) VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3,now()+interval '7 days')", user.id, req.orgId, hash);
-    });
+    const refreshToken = makeProductionRefreshToken(req.orgId), secret = refreshToken.slice(req.orgId.length + 1), hash = crypto.createHash("sha256").update(secret).digest("hex");
+    await withTenant(prisma as never, req.orgId, async (tx: unknown) => { await (tx as any).$executeRawUnsafe("INSERT INTO refresh_tokens (id,user_id,org_id,token_hash,expires_at) VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3,now()+interval '7 days')", user.id, req.orgId, hash); });
     return issue(user, refreshToken);
   }
   const user = findUserByEmail(req.email);
@@ -43,23 +43,36 @@ export async function ssoCallback(req: SsoCallbackRequest): Promise<AuthResult> 
   let email = req.email;
   if (!email && req.code) { try { const decoded = Buffer.from(req.code, "base64").toString("utf8"); email = decoded.includes("@") ? decoded : req.code; } catch { email = req.code; } }
   if (!email) throw authError("code/email required", 400, "BAD_REQUEST");
-  const user = findUserByEmail(email);
-  if (!user) throw authError("SSO user not found");
+  const user = findUserByEmail(email); if (!user) throw authError("SSO user not found");
   if (user.ssoProvider && user.ssoProvider !== req.provider) throw authError("SSO provider mismatch");
   return issue(user, createRefreshToken(user.id).token);
 }
 
 export async function refreshAccessToken(refreshTokenStr: string): Promise<AuthResult> {
-  if (process.env.NODE_ENV === "production") throw authError("Refresh endpoint requires tenant-aware session infrastructure", 503, "AUTH_NOT_CONFIGURED");
-  const rt = findRefreshToken(refreshTokenStr);
-  if (!rt || rt.revokedAt || rt.expiresAt <= new Date()) throw authError("Refresh token expired or revoked");
+  if (process.env.NODE_ENV === "production") {
+    const { orgId, secret } = splitProductionRefreshToken(refreshTokenStr);
+    const hash = crypto.createHash("sha256").update(secret).digest("hex");
+    return withTenant(prisma as never, orgId, async (tx: unknown) => {
+      const p = tx as any;
+      const rows = await p.$queryRawUnsafe("SELECT rt.id, rt.user_id AS \"userId\", rt.expires_at AS \"expiresAt\", u.org_id AS \"orgId\", u.email, u.name, u.role FROM refresh_tokens rt JOIN users u ON u.id=rt.user_id WHERE rt.token_hash=$1 AND rt.org_id=$2::uuid AND rt.revoked_at IS NULL LIMIT 1", hash, orgId);
+      const rt = rows[0]; if (!rt || new Date(rt.expiresAt) <= new Date()) throw authError("Refresh token expired or revoked");
+      await p.$executeRawUnsafe("UPDATE refresh_tokens SET revoked_at=now() WHERE id=$1::uuid AND revoked_at IS NULL", rt.id);
+      const next = makeProductionRefreshToken(orgId), nextHash = crypto.createHash("sha256").update(next.slice(orgId.length + 1)).digest("hex");
+      await p.$executeRawUnsafe("INSERT INTO refresh_tokens (id,user_id,org_id,token_hash,expires_at) VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3,now()+interval '7 days')", rt.userId, orgId, nextHash);
+      return issue({ id: rt.userId, orgId: rt.orgId, email: rt.email, name: rt.name, role: rt.role }, next);
+    });
+  }
+  const rt = findRefreshToken(refreshTokenStr); if (!rt || rt.revokedAt || rt.expiresAt <= new Date()) throw authError("Refresh token expired or revoked");
   const user = findUserById(rt.userId); if (!user) throw authError("User not found");
-  revokeRefreshToken(rt.id);
-  return issue(user, createRefreshToken(user.id).token);
+  revokeRefreshToken(rt.id); return issue(user, createRefreshToken(user.id).token);
 }
 
 export async function logout(refreshTokenStr: string): Promise<void> {
-  if (process.env.NODE_ENV === "production") throw authError("Logout requires tenant-aware session infrastructure", 503, "AUTH_NOT_CONFIGURED");
+  if (process.env.NODE_ENV === "production") {
+    const { orgId, secret } = splitProductionRefreshToken(refreshTokenStr), hash = crypto.createHash("sha256").update(secret).digest("hex");
+    await withTenant(prisma as never, orgId, async (tx: unknown) => { await (tx as any).$executeRawUnsafe("UPDATE refresh_tokens SET revoked_at=now() WHERE token_hash=$1 AND org_id=$2::uuid AND revoked_at IS NULL", hash, orgId); });
+    return;
+  }
   const rt = findRefreshToken(refreshTokenStr); if (rt) revokeRefreshToken(rt.id);
 }
 export function getUserById(id: string) { return findUserById(id); }
