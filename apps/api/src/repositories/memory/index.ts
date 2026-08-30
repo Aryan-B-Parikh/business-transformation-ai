@@ -1,17 +1,29 @@
 /**
- * In-Memory Domain Aggregate Repositories (Strictly for isolated unit tests)
+ * In-Memory Domain Aggregate Repositories (Isolated for unit testing)
  */
 
 import {
   IProjectAggregateRepository,
   IArtifactAggregateRepository,
   ITransformationAggregateRepository,
+  IDocumentAggregateRepository,
+  ICollaborationAggregateRepository,
+  IWebhookAggregateRepository,
+  IGovernanceAggregateRepository,
   WorkspaceEntity,
   ProjectEntity,
   ProjectMemberEntity,
   ArtifactEntity,
   ArtifactCommentEntity,
   JourneyStageEntity,
+  DocumentEntity,
+  DocumentChunkEntity,
+  ArtifactApprovalEntity,
+  NotificationEntity,
+  WebhookConfigEntity,
+  OutboxEventEntity,
+  AuditLogEntity,
+  AIModelConfigEntity,
 } from "../interfaces";
 import {
   ArtifactType,
@@ -275,5 +287,246 @@ export class MemoryTransformationRepository implements ITransformationAggregateR
   async getLatestMaturity(orgId: string, projectId: string): Promise<DashboardMaturityModel | null> {
     requireOrgId(orgId);
     return this.snapshots.get(`${orgId}:${projectId}`) ?? null;
+  }
+}
+
+export class MemoryDocumentRepository implements IDocumentAggregateRepository {
+  private documents = new Map<string, DocumentEntity>();
+  private chunks = new Map<string, DocumentChunkEntity[]>();
+
+  async createDocument(
+    orgId: string,
+    projectId: string,
+    data: { filename: string; docType: string; fileSize: number; storageKey?: string }
+  ): Promise<DocumentEntity> {
+    requireOrgId(orgId);
+    const doc: DocumentEntity = {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      project_id: projectId,
+      filename: data.filename,
+      doc_type: data.docType,
+      file_size: data.fileSize,
+      parsed_status: "pending",
+      storage_key: data.storageKey ?? null,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+    this.documents.set(doc.id, doc);
+    return doc;
+  }
+
+  async findDocumentById(orgId: string, id: string): Promise<DocumentEntity | null> {
+    requireOrgId(orgId);
+    const doc = this.documents.get(id);
+    if (!doc || doc.org_id !== orgId) return null;
+    return doc;
+  }
+
+  async listDocumentsByProject(orgId: string, projectId: string): Promise<DocumentEntity[]> {
+    requireOrgId(orgId);
+    return Array.from(this.documents.values()).filter(
+      (d) => d.org_id === orgId && d.project_id === projectId
+    );
+  }
+
+  async updateParsedStatus(orgId: string, id: string, status: "pending" | "parsed" | "failed"): Promise<DocumentEntity> {
+    requireOrgId(orgId);
+    const doc = await this.findDocumentById(orgId, id);
+    if (!doc) throw new Error("Document not found");
+    doc.parsed_status = status;
+    doc.updated_at = new Date();
+    return doc;
+  }
+
+  async addChunks(orgId: string, documentId: string, chunksData: Array<{ chunkIndex: number; content: string; pageNumber?: number; embedding?: number[] }>): Promise<DocumentChunkEntity[]> {
+    requireOrgId(orgId);
+    const entities: DocumentChunkEntity[] = chunksData.map((c) => ({
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      document_id: documentId,
+      chunk_index: c.chunkIndex,
+      content: c.content,
+      page_number: c.pageNumber ?? null,
+      embedding: c.embedding ?? null,
+      created_at: new Date(),
+    }));
+    this.chunks.set(documentId, (this.chunks.get(documentId) || []).concat(entities));
+    return entities;
+  }
+
+  async searchSimilarChunks(orgId: string, projectId: string, queryEmbedding: number[], topK: number): Promise<Array<DocumentChunkEntity & { score: number }>> {
+    requireOrgId(orgId);
+    const docs = await this.listDocumentsByProject(orgId, projectId);
+    const allChunks: DocumentChunkEntity[] = [];
+    for (const doc of docs) {
+      const c = this.chunks.get(doc.id) || [];
+      allChunks.push(...c);
+    }
+    return allChunks.slice(0, topK).map((c, i) => ({ ...c, score: 0.9 - i * 0.05 }));
+  }
+}
+
+export class MemoryCollaborationRepository implements ICollaborationAggregateRepository {
+  private approvals = new Map<string, ArtifactApprovalEntity>();
+  private notifications = new Map<string, NotificationEntity>();
+
+  async recordApproval(orgId: string, artifactId: string, userId: string, status: "approved" | "rejected" | "changes_requested", comment?: string): Promise<ArtifactApprovalEntity> {
+    requireOrgId(orgId);
+    const entity: ArtifactApprovalEntity = {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      artifact_id: artifactId,
+      user_id: userId,
+      status,
+      comment: comment ?? null,
+      created_at: new Date(),
+    };
+    this.approvals.set(entity.id, entity);
+    return entity;
+  }
+
+  async listApprovals(orgId: string, artifactId: string): Promise<ArtifactApprovalEntity[]> {
+    requireOrgId(orgId);
+    return Array.from(this.approvals.values()).filter((a) => a.org_id === orgId && a.artifact_id === artifactId);
+  }
+
+  async createNotification(orgId: string, userId: string, title: string, body: string): Promise<NotificationEntity> {
+    requireOrgId(orgId);
+    const notif: NotificationEntity = {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      user_id: userId,
+      title,
+      body,
+      read: false,
+      created_at: new Date(),
+    };
+    this.notifications.set(notif.id, notif);
+    return notif;
+  }
+
+  async listNotifications(orgId: string, userId: string): Promise<NotificationEntity[]> {
+    requireOrgId(orgId);
+    return Array.from(this.notifications.values()).filter((n) => n.org_id === orgId && n.user_id === userId);
+  }
+
+  async markNotificationRead(orgId: string, id: string): Promise<NotificationEntity> {
+    requireOrgId(orgId);
+    const notif = this.notifications.get(id);
+    if (!notif || notif.org_id !== orgId) throw new Error("Notification not found");
+    notif.read = true;
+    return notif;
+  }
+}
+
+export class MemoryWebhookRepository implements IWebhookAggregateRepository {
+  private configs = new Map<string, WebhookConfigEntity>();
+  private outbox = new Map<string, OutboxEventEntity>();
+
+  async createConfig(orgId: string, workspaceId: string, data: { url: string; events: string[]; secret?: string }): Promise<WebhookConfigEntity> {
+    requireOrgId(orgId);
+    const cfg: WebhookConfigEntity = {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      workspace_id: workspaceId,
+      url: data.url,
+      events: data.events,
+      secret: data.secret ?? null,
+      created_at: new Date(),
+    };
+    this.configs.set(cfg.id, cfg);
+    return cfg;
+  }
+
+  async listConfigs(orgId: string, workspaceId: string): Promise<WebhookConfigEntity[]> {
+    requireOrgId(orgId);
+    return Array.from(this.configs.values()).filter((c) => c.org_id === orgId && c.workspace_id === workspaceId);
+  }
+
+  async findConfigById(orgId: string, id: string): Promise<WebhookConfigEntity | null> {
+    requireOrgId(orgId);
+    const c = this.configs.get(id);
+    if (!c || c.org_id !== orgId) return null;
+    return c;
+  }
+
+  async queueOutboxEvent(orgId: string, eventType: string, aggregateId: string, payload: Record<string, unknown>): Promise<OutboxEventEntity> {
+    requireOrgId(orgId);
+    const evt: OutboxEventEntity = {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      event_type: eventType,
+      aggregate_id: aggregateId,
+      payload,
+      status: "pending",
+      attempt_count: 0,
+      created_at: new Date(),
+    };
+    this.outbox.set(evt.id, evt);
+    return evt;
+  }
+
+  async listPendingOutboxEvents(limit = 50): Promise<OutboxEventEntity[]> {
+    return Array.from(this.outbox.values())
+      .filter((e) => e.status === "pending")
+      .slice(0, limit);
+  }
+
+  async markOutboxEventResult(id: string, status: "delivered" | "failed" | "dead_letter", error?: string): Promise<void> {
+    const evt = this.outbox.get(id);
+    if (!evt) return;
+    evt.status = status;
+    evt.attempt_count += 1;
+    evt.last_error = error ?? null;
+  }
+}
+
+export class MemoryGovernanceRepository implements IGovernanceAggregateRepository {
+  private logs: AuditLogEntity[] = [];
+  private aiConfigs = new Map<string, AIModelConfigEntity>();
+
+  async recordAuditLog(orgId: string, actorId: string, action: string, resourceType: string, resourceId: string, details: Record<string, unknown>): Promise<AuditLogEntity> {
+    requireOrgId(orgId);
+    const log: AuditLogEntity = {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      actor_id: actorId,
+      action,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      details,
+      created_at: new Date(),
+    };
+    this.logs.unshift(log);
+    return log;
+  }
+
+  async listAuditLogs(orgId: string, limit = 100): Promise<AuditLogEntity[]> {
+    requireOrgId(orgId);
+    return this.logs.filter((l) => l.org_id === orgId).slice(0, limit);
+  }
+
+  async setAIModelConfig(orgId: string, module: string, config: { provider: string; model: string; temperature: number; max_tokens: number; enabled: boolean }): Promise<AIModelConfigEntity> {
+    requireOrgId(orgId);
+    const key = `${orgId}:${module}`;
+    const entity: AIModelConfigEntity = {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      module,
+      provider: config.provider,
+      model: config.model,
+      temperature: config.temperature,
+      max_tokens: config.max_tokens,
+      enabled: config.enabled,
+      created_at: new Date(),
+    };
+    this.aiConfigs.set(key, entity);
+    return entity;
+  }
+
+  async getAIModelConfig(orgId: string, module: string): Promise<AIModelConfigEntity | null> {
+    requireOrgId(orgId);
+    return this.aiConfigs.get(`${orgId}:${module}`) ?? null;
   }
 }
