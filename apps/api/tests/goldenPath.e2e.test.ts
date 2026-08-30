@@ -1,10 +1,32 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
+import { PrismaClient } from "@prisma/client";
 import { createApp } from "../src/app";
 import { generateToken } from "../src/auth/jwt";
 
 describe("Golden Path E2E (Phase 29)", () => {
   const app = createApp();
+  let prisma: PrismaClient;
+
+  beforeAll(async () => {
+    if (process.env.DATABASE_URL) {
+      prisma = new PrismaClient();
+      await prisma.organization.upsert({
+        where: { id: "org-e2e" },
+        update: {},
+        create: { id: "org-e2e", name: "E2E Org", plan: "trial" }
+      });
+      await prisma.user.upsert({
+        where: { id: "u-e2e" },
+        update: {},
+        create: { id: "u-e2e", orgId: "org-e2e", name: "E2E User", email: "e2e@example.com", role: "org_admin" }
+      });
+    }
+  });
+
+  afterAll(async () => {
+    if (prisma) await prisma.$disconnect();
+  });
 
   it("should execute the full golden path: Org -> Workspace -> Project -> Document -> Chat -> Artifact -> Dashboard", async () => {
     const token = generateToken({

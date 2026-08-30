@@ -45,10 +45,14 @@ describe("Phase 33 - RLS Attack and Privilege Verification", () => {
     await withTenant(prisma, orgId, async (tx) => {
       // Clean up previous test runs if any
       await tx.project.deleteMany({ where: { orgId } });
+      await tx.organization.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, name: "Org", plan: "trial" } });
+      await tx.user.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, orgId, name: "User", email: `${orgId}@example.com`, role: "org_admin" } });
+      await tx.workspace.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, orgId, name: "WS", createdBy: orgId } });
       await tx.project.create({
         data: {
           id: "proj-rls-attack",
           orgId,
+          workspaceId: orgId,
           name: "Secret Project",
         }
       });
@@ -66,15 +70,21 @@ describe("Phase 33 - RLS Attack and Privilege Verification", () => {
     
     await withTenant(prisma, orgA, async (tx) => {
       await tx.project.deleteMany({ where: { orgId: orgA } });
+      await tx.organization.upsert({ where: { id: orgA }, update: {}, create: { id: orgA, name: "Org", plan: "trial" } });
+      await tx.user.upsert({ where: { id: orgA }, update: {}, create: { id: orgA, orgId: orgA, name: "User", email: `${orgA}@example.com`, role: "org_admin" } });
+      await tx.workspace.upsert({ where: { id: orgA }, update: {}, create: { id: orgA, orgId: orgA, name: "WS", createdBy: orgA } });
       await tx.project.create({
-        data: { id: "proj-a", orgId: orgA, name: "Project A" }
+        data: { id: "proj-a", orgId: orgA, workspaceId: orgA, name: "Project A" }
       });
     });
 
     await withTenant(prisma, orgB, async (tx) => {
       await tx.project.deleteMany({ where: { orgId: orgB } });
+      await tx.organization.upsert({ where: { id: orgB }, update: {}, create: { id: orgB, name: "Org", plan: "trial" } });
+      await tx.user.upsert({ where: { id: orgB }, update: {}, create: { id: orgB, orgId: orgB, name: "User", email: `${orgB}@example.com`, role: "org_admin" } });
+      await tx.workspace.upsert({ where: { id: orgB }, update: {}, create: { id: orgB, orgId: orgB, name: "WS", createdBy: orgB } });
       await tx.project.create({
-        data: { id: "proj-b", orgId: orgB, name: "Project B" }
+        data: { id: "proj-b", orgId: orgB, workspaceId: orgB, name: "Project B" }
       });
     });
 

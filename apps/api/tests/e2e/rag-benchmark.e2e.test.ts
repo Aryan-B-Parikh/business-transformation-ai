@@ -26,8 +26,11 @@ describe("Phase 33 - RAG Benchmark and Cost E2E", () => {
     
     await withTenant(prisma, orgId, async (tx) => {
       // Setup
+      await tx.organization.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, name: "Org", plan: "trial" } });
+      await tx.user.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, orgId, name: "User", email: `${orgId}@example.com`, role: "org_admin" } });
+      await tx.workspace.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, orgId, name: "WS", createdBy: orgId } });
       await tx.project.create({
-        data: { id: projId, orgId, name: "RAG Proj" }
+        data: { id: projId, orgId, workspaceId: orgId, name: "RAG Proj" }
       });
       await tx.document.create({
         data: { id: "doc-rag-1", projectId: projId, orgId, filename: "test.pdf", storageUrl: "s3://1", type: "pdf", status: "completed", fileId: "f1", parsedStatus: "completed" }

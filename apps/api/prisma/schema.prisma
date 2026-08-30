@@ -459,7 +459,8 @@ model OutboxEvent {
   status       String   @default("pending")
   attempt_count Int     @default(0)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-  error        String?
+  last_error   String?
+  next_retry_at DateTime? @db.Timestamptz
 
   @@index([orgId])
   @@index([status])

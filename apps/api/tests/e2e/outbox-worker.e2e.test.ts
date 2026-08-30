@@ -24,10 +24,14 @@ describe("Phase 33 - Transactional Outbox and Worker E2E", () => {
     
     await withTenant(prisma, orgId, async (tx) => {
       // 1. Domain Mutation & Outbox insert in same transaction
+      await tx.organization.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, name: "Org", plan: "trial" } });
+      await tx.user.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, orgId, name: "User", email: `${orgId}@example.com`, role: "org_admin" } });
+      await tx.workspace.upsert({ where: { id: orgId }, update: {}, create: { id: orgId, orgId, name: "WS", createdBy: orgId } });
       await tx.project.create({
         data: {
           id: "proj-outbox-test",
           orgId,
+          workspaceId: orgId,
           name: "Outbox Project",
         }
       });
