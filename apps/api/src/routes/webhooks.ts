@@ -1,94 +1,10 @@
-/**
- * Webhook routes — TASK-027
- * Outbound webhook config per workspace
- */
-
-import { Router, Response } from "express";
-import { AuthedRequest, authenticate } from "../middleware/auth";
-import { authorize } from "../middleware/rbac";
-import { PrismaClient } from "@prisma/client";
-import { getRepositories } from "../repositories";
-
-const prisma = new PrismaClient();
-
-const router = Router();
-
-// POST /workspaces/:id/webhooks — configure webhook
-router.post(
-  "/workspaces/:id/webhooks",
-  authenticate,
-  authorize("org_admin", "workspace_admin"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const workspaceId = String(req.params.id);
-    // Verify workspace exists and belongs to org
-    const ws = await getRepositories().projects.findWorkspaceById(orgId, workspaceId);
-    if (!ws || ws.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Workspace not found" } });
-      return;
-    }
-    const { url, events } = req.body as { url?: string; events?: string[] };
-    if (!url || typeof url !== "string" || !url.startsWith("http")) {
-      res.status(400).json({ error: { code: "BAD_REQUEST", message: "valid url required" } });
-      return;
-    }
-    const evts = events && Array.isArray(events) && events.length > 0 ? events : ["artifact.approved", "artifact.created"];
-    const cfg = await prisma.webhookConfig.create({
-      data: { workspaceId, orgId, url, events: evts }
-    });
-    res.status(201).json(cfg);
-  }
-);
-
-// GET /workspaces/:id/webhooks
-router.get(
-  "/workspaces/:id/webhooks",
-  authenticate,
-  authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const workspaceId = String(req.params.id);
-    const ws = await getRepositories().projects.findWorkspaceById(orgId, workspaceId);
-    if (!ws || ws.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Workspace not found" } });
-      return;
-    }
-    const list = await prisma.webhookConfig.findMany({ where: { workspaceId, orgId } });
-    res.json({ data: list });
-  }
-);
-
-// POST /workspaces/:id/webhooks/:webhookId/trigger — manual trigger for tests (simulates artifact event)
-router.post(
-  "/workspaces/:id/webhooks/:webhookId/trigger",
-  authenticate,
-  authorize("org_admin", "workspace_admin"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const workspaceId = String(req.params.id);
-    const webhookId = String(req.params.webhookId);
-    const { event, payload } = req.body as { event?: string; payload?: Record<string, unknown> };
-    const cfg = await prisma.webhookConfig.findUnique({ where: { id: webhookId } });
-    if (!cfg || cfg.orgId !== orgId || cfg.workspaceId !== workspaceId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Webhook not found" } });
-      return;
-    }
-    // mock sync delivery for test
-    const outbox = await getRepositories().webhooks.queueOutboxEvent(orgId, event || "artifact.approved", workspaceId, payload || { test: true });
-    res.json({ deliveries: [outbox] });
-  }
-);
-
-// GET /webhooks/deliveries — for tests to verify webhook was called
-router.get(
-  "/webhooks/deliveries",
-  authenticate,
-  authorize("org_admin", "workspace_admin"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const all = await prisma.outboxEvent.findMany({ where: { orgId } });
-    res.json({ data: all });
-  }
-);
-
+import {Router} from "express";
+import {AuthedRequest,authenticate} from "../middleware/auth";
+import {authorize} from "../middleware/rbac";
+import {getRepositories} from "../repositories";
+import {validateSafeWebhookUrl} from "../services/webhook/ssrfGuard";
+const router=Router();
+router.post("/workspaces/:id/webhooks",authenticate,authorize("org_admin","workspace_admin"),async(req:AuthedRequest,res)=>{const orgId=req.user!.orgId,workspaceId=String(req.params.id),ws=await getRepositories().projects.findWorkspaceById(orgId,workspaceId);if(!ws)return res.status(404).json({error:{code:"NOT_FOUND",message:"Workspace not found"}});const{url,events,secret}=req.body||{};if(typeof url!=="string"||!/^https?:\/\//i.test(url)||!(await validateSafeWebhookUrl(url)))return res.status(400).json({error:{code:"SSRF_BLOCKED",message:"Webhook URL is invalid or resolves to a private/reserved address"}});const cfg=await getRepositories().webhooks.createConfig(orgId,workspaceId,{url,events:Array.isArray(events)&&events.length?events:["artifact.approved","artifact.created"],secret});return res.status(201).json(cfg);});
+router.get("/workspaces/:id/webhooks",authenticate,authorize("org_admin","workspace_admin","contributor","reviewer","viewer"),async(req:AuthedRequest,res)=>{const orgId=req.user!.orgId,id=String(req.params.id);if(!await getRepositories().projects.findWorkspaceById(orgId,id))return res.status(404).json({error:{code:"NOT_FOUND",message:"Workspace not found"}});return res.json({data:await getRepositories().webhooks.listConfigs(orgId,id)});});
+router.post("/workspaces/:id/webhooks/:webhookId/trigger",authenticate,authorize("org_admin","workspace_admin"),async(req:AuthedRequest,res)=>{const orgId=req.user!.orgId,workspaceId=String(req.params.id),cfg=await getRepositories().webhooks.findConfigById(orgId,String(req.params.webhookId));if(!cfg||cfg.workspaceId!==workspaceId)return res.status(404).json({error:{code:"NOT_FOUND",message:"Webhook not found"}});const event=typeof req.body?.event==="string"?req.body.event:"artifact.approved";const out=await getRepositories().webhooks.queueOutboxEvent(orgId,event,cfg.id,req.body?.payload||{test:true});return res.status(202).json({queued:out});});
 export default router;
