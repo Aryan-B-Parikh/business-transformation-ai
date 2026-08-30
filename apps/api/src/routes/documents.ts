@@ -1,255 +1,125 @@
-/**
- * Document routes — TASK-006
- * POST /projects/:id/documents (multipart), GET /projects/:id/documents,
- * GET /documents/:id, DELETE /documents/:id, GET /documents/:id/status, GET /documents/:id/file
- * Tenant isolation enforced via JWT orgId.
- */
-
 import { Router, Response } from "express";
-import { getRepositories } from "../repositories";
 import multer from "multer";
+import { getRepositories } from "../repositories";
 import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
-import { processDocument, getChunks } from "../services/documentParser";
-import { retrieveRag } from "../services/rag";
+import { processDocument, embed } from "../services/documentParser";
 import { storeFile, getMemoryFile, generateSignedUrl } from "../services/storage";
-import { createDocument, getDocument, listDocuments, deleteDocument, updateParsedStatus, inferDocType, getDocIdsForProject } from "../stores/documents";
-
 
 const router = Router();
-
-// Multer memory storage — 10MB limit per file, allow pdf/pptx/docx + any for test
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const ALLOWED = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+]);
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    // Allow any filetype for tests; production would filter to pdf/pptx/docx
-    cb(null, true);
-  },
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (_req, file, cb) => cb(null, ALLOWED.has(file.mimetype)),
 });
 
-// POST /projects/:id/documents — multipart upload
-router.post(
-  "/projects/:id/documents",
-  authenticate,
-  // Allow org_admin, workspace_admin, contributor per RBAC
-  authorize("org_admin", "workspace_admin", "contributor"),
-  upload.single("file"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const userId = req.user!.userId;
-    const projectId = String(req.params.id);
-    const proj = await getRepositories().projects.findProjectById(orgId, projectId);
-    if (!proj || proj.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
-      return;
-    }
-    // multer puts file on req.file
-    const file = (req as unknown as { file?: Express.Multer.File }).file;
-    if (!file) {
-      res.status(400).json({ error: { code: "BAD_REQUEST", message: "file required (multipart field 'file')" } });
-      return;
-    }
-    const filename = file.originalname || "unknown";
-    const { storageUrl, fileId } = await storeFile(orgId, file.buffer, filename, file.mimetype);
-    const docType = inferDocType(filename);
-    const doc = createDocument({
-      projectId,
-      orgId,
-      filename,
-      type: docType,
-      storageUrl,
-      fileId,
-      parsedStatus: "pending",
-      uploadedBy: userId,
-    });
+function error(res: Response, status: number, code: string, message: string) {
+  return res.status(status).json({ error: { code, message } });
+}
+function fileType(filename: string) {
+  const ext = filename.toLowerCase().split(".").pop();
+  return ext === "pdf" || ext === "docx" || ext === "pptx" || ext === "txt" ? ext : "other";
+}
 
-    // Async parsing — fire and forget, but also await for test determinism (sync)
-    // In production this would be a background worker / queue (Redis)
-    setImmediate(async () => {
-      try {
-        await processDocument({ documentId: doc.id, orgId, buffer: file.buffer, filename });
-        updateParsedStatus(doc.id, "parsed");
-      } catch (e) {
-        console.error(`Document parsing failed [${doc.id}]:`, e instanceof Error ? e.message : e);
-        updateParsedStatus(doc.id, "failed");
-      }
-    });
+router.post("/projects/:id/documents", authenticate, authorize("org_admin", "workspace_admin", "contributor"), upload.single("file"), async (req: AuthedRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const projectId = String(req.params.id);
+  const project = await getRepositories().projects.findProjectById(orgId, projectId);
+  if (!project) return error(res, 404, "NOT_FOUND", "Project not found");
+  const file = req.file;
+  if (!file) return error(res, 400, "BAD_REQUEST", "A supported file is required");
+  const filename = file.originalname || "document";
+  const stored = await storeFile(orgId, file.buffer, filename, file.mimetype);
+  const doc = await getRepositories().documents.createDocument(orgId, projectId, {
+    filename,
+    docType: fileType(filename),
+    fileSize: file.size,
+    storageKey: stored.storageUrl,
+  });
 
-    // For tests we also want parsed quickly; we await here if query param ?sync=true
-    const syncVal = Array.isArray(req.query.sync) ? req.query.sync[0] : (req.query.sync as string | undefined);
-    if (syncVal === "true") {
-      try {
-        await processDocument({ documentId: doc.id, orgId, buffer: file.buffer, filename });
-        updateParsedStatus(doc.id, "parsed");
-      } catch (e) {
-        console.error(`Document sync parsing failed [${doc.id}]:`, e instanceof Error ? e.message : e);
-        updateParsedStatus(doc.id, "failed");
-      }
+  const run = async () => {
+    try {
+      const chunks = await processDocument({ documentId: doc.id, orgId, buffer: file.buffer, filename });
+      await getRepositories().documents.addChunks(orgId, doc.id, chunks.map((c, i) => ({
+        chunkIndex: i, content: c.chunkText, pageNumber: c.pageRef ?? undefined, embedding: c.embedding,
+      })));
+      await getRepositories().documents.updateParsedStatus(orgId, doc.id, "parsed");
+    } catch (e) {
+      console.error(`Document processing failed [${doc.id}]`, e);
+      await getRepositories().documents.updateParsedStatus(orgId, doc.id, "failed").catch(() => undefined);
     }
+  };
+  // Tests may request deterministic synchronous processing; production defaults to async.
+  if (req.query.sync === "true" || process.env.NODE_ENV === "test") await run();
+  else void run();
 
-    const signedUrl = await generateSignedUrl(doc.id, orgId, storageUrl);
-    // Return full document with signedUrl for client retrieval
-    res.status(201).json({ ...doc, signedUrl, parsedStatus: doc.parsedStatus });
-  }
-);
+  const signedUrl = await generateSignedUrl(doc.id, orgId, stored.storageUrl);
+  return res.status(201).json({ ...doc, storageUrl: stored.storageUrl, signedUrl });
+});
 
-// GET /projects/:id/documents — list for project
-router.get(
-  "/projects/:id/documents",
-  authenticate,
-  authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const projectId = String(req.params.id);
-    const proj = await getRepositories().projects.findProjectById(orgId, projectId);
-    if (!proj || proj.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
-      return;
-    }
-    const docs = listDocuments(projectId, orgId);
-    // Pagination — robust to string | string[] | ParsedQs
-    const q = (v: unknown): string | undefined => {
-      if (typeof v === "string") return v;
-      if (Array.isArray(v) && typeof v[0] === "string") return v[0] as string;
-      return undefined;
-    };
-    const page = Math.max(1, parseInt(q(req.query.page) || "1", 10) || 1);
-    const pageSize = Math.max(1, Math.min(100, parseInt(q(req.query.page_size) || "20", 10) || 20));
-    const total = docs.length;
-    const start = (page - 1) * pageSize;
-    const pagedDocs = docs.slice(start, start + pageSize);
-    const data = await Promise.all(pagedDocs.map(async (d) => ({ ...d, signedUrl: await generateSignedUrl(d.id, orgId, d.storageUrl) })));
-    res.json({ data, page, page_size: pageSize, total });
-  }
-);
+router.get("/projects/:id/documents", authenticate, authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"), async (req: AuthedRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const projectId = String(req.params.id);
+  if (!(await getRepositories().projects.findProjectById(orgId, projectId))) return error(res, 404, "NOT_FOUND", "Project not found");
+  const docs = await getRepositories().documents.listDocumentsByProject(orgId, projectId);
+  const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
+  const pageSize = Math.max(1, Math.min(100, Number.parseInt(String(req.query.page_size || "20"), 10) || 20));
+  const data = await Promise.all(docs.slice((page - 1) * pageSize, page * pageSize).map(async (d) => ({
+    ...d, signedUrl: await generateSignedUrl(d.id, orgId, d.storage_key || ""),
+  })));
+  return res.json({ data, page, page_size: pageSize, total: docs.length });
+});
 
-// GET /documents/:id — single
-router.get(
-  "/documents/:id",
-  authenticate,
-  authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const doc = getDocument(String(req.params.id));
-    if (!doc || doc.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
-      return;
-    }
-    res.json({ ...doc, signedUrl: await generateSignedUrl(doc.id, orgId, doc.storageUrl) });
-  }
-);
+router.get("/documents/:id", authenticate, authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"), async (req: AuthedRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const doc = await getRepositories().documents.findDocumentById(orgId, String(req.params.id));
+  if (!doc) return error(res, 404, "NOT_FOUND", "Document not found");
+  return res.json({ ...doc, signedUrl: await generateSignedUrl(doc.id, orgId, doc.storage_key || "") });
+});
 
-// DELETE /documents/:id
-router.delete(
-  "/documents/:id",
-  authenticate,
-  authorize("org_admin", "workspace_admin", "contributor"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const doc = getDocument(String(req.params.id));
-    if (!doc || doc.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
-      return;
-    }
-    deleteDocument(doc.id);
-    res.status(204).send();
-  }
-);
+router.delete("/documents/:id", authenticate, authorize("org_admin", "workspace_admin", "contributor"), async (req: AuthedRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const doc = await getRepositories().documents.findDocumentById(orgId, String(req.params.id));
+  if (!doc) return error(res, 404, "NOT_FOUND", "Document not found");
+  return error(res, 501, "NOT_IMPLEMENTED", "Document deletion requires object-store deletion and is not enabled by this API yet");
+});
 
-// GET /documents/:id/status — parsedStatus polling
-router.get(
-  "/documents/:id/status",
-  authenticate,
-  authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const doc = getDocument(String(req.params.id));
-    if (!doc || doc.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
-      return;
-    }
-    // Include chunk count for debugging
-    const chunks = getChunks(doc.id);
-    res.json({ id: doc.id, parsedStatus: doc.parsedStatus, parsedStatus: doc.parsedStatus, chunkCount: chunks.length });
-  }
-);
+router.get("/documents/:id/status", authenticate, authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"), async (req: AuthedRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const doc = await getRepositories().documents.findDocumentById(orgId, String(req.params.id));
+  if (!doc) return error(res, 404, "NOT_FOUND", "Document not found");
+  return res.json({ id: doc.id, parsedStatus: doc.parsedStatus });
+});
 
-// GET /documents/:id/file — serve file content (signed URL target)
-router.get(
-  "/documents/:id/file",
-  authenticate,
-  authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const doc = getDocument(String(req.params.id));
-    if (!doc || doc.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
-      return;
-    }
-    const file = getMemoryFile(doc.fileId);
-    if (!file) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "File not found in storage" } });
-      return;
-    }
-    res.setHeader("Content-Type", file.mimetype || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${file.filename}"`);
-    res.setHeader("Content-Length", String(file.size));
-    res.send(file.buffer);
-  }
-);
+router.get("/documents/:id/file", authenticate, authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"), async (req: AuthedRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const doc = await getRepositories().documents.findDocumentById(orgId, String(req.params.id));
+  if (!doc) return error(res, 404, "NOT_FOUND", "Document not found");
+  if (doc.storage_key?.startsWith("s3://")) return res.redirect(307, await generateSignedUrl(doc.id, orgId, doc.storage_key));
+  if (process.env.NODE_ENV === "production") return error(res, 503, "STORAGE_UNAVAILABLE", "Object storage is unavailable");
+  const file = doc.storage_key ? getMemoryFile(doc.storage_key.split("/").pop() || "") : undefined;
+  if (!file) return error(res, 404, "NOT_FOUND", "File not found in test storage");
+  res.setHeader("Content-Type", file.mimetype || "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="${file.filename.replace(/"/g, "")}"`);
+  return res.send(file.buffer);
+});
 
-// GET /projects/:id/documents/:docId/chunks — debug: list chunks (internal, for RAG tests)
-router.get(
-  "/projects/:id/documents/:docId/chunks",
-  authenticate,
-  authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const projectId = String(req.params.id);
-    const docId = String(req.params.docId);
-    const proj = await getRepositories().projects.findProjectById(orgId, projectId);
-    if (!proj || proj.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
-      return;
-    }
-    const doc = getDocument(docId);
-    if (!doc || doc.orgId !== orgId || doc.projectId !== projectId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Document not found" } });
-      return;
-    }
-    const chunks = getChunks(docId);
-    res.json({ data: chunks });
-  }
-);
-
-// POST /projects/:id/rag/search — RAG retrieval (TASK-008)
-router.post(
-  "/projects/:id/rag/search",
-  authenticate,
-  authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  async (req: AuthedRequest, res: Response) => {
-    const orgId = req.user!.orgId;
-    const projectId = String(req.params.id);
-    const proj = await getRepositories().projects.findProjectById(orgId, projectId);
-    if (!proj || proj.orgId !== orgId) {
-      res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
-      return;
-    }
-    const { query, k } = (req.body || {}) as { query?: string; k?: number };
-    if (!query || typeof query !== "string" || query.trim().length === 0) {
-      res.status(400).json({ error: { code: "BAD_REQUEST", message: "query required" } });
-      return;
-    }
-    const docIds = getDocIdsForProject(projectId);
-    const results = retrieveRag({ projectId, orgId, query, k: k || 5, docIdsForProject: docIds });
-    res.json({ query, k: k || 5, results, total: results.length });
-  }
-);
+router.post("/projects/:id/rag/search", authenticate, authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"), async (req: AuthedRequest, res: Response) => {
+  const orgId = req.user!.orgId;
+  const projectId = String(req.params.id);
+  if (!(await getRepositories().projects.findProjectById(orgId, projectId))) return error(res, 404, "NOT_FOUND", "Project not found");
+  const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
+  const k = Math.max(1, Math.min(20, Number(req.body?.k) || 5));
+  if (!query) return error(res, 400, "BAD_REQUEST", "query required");
+  const results = await getRepositories().documents.searchSimilarChunks(orgId, projectId, embed(query), k);
+  return res.json({ query, k, results: results.map((r) => ({ id: r.id, documentId: r.documentId, orgId: r.orgId, chunkText: r.content, pageRef: r.page_number, score: r.score })), total: results.length });
+});
 
 export default router;
-
-// Re-export for rag service helper
-export function getDocIdsForProjectHelper(projectId: string): Set<string> {
-  return getDocIdsForProject(projectId);
-}
