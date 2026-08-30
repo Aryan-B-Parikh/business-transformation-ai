@@ -25,9 +25,22 @@ export function clearExports(): void {
   exportRecords.clear();
 }
 
-export function createExport(artifactId: string, orgId: string, format: ExportFormat, artifactContent: Record<string, unknown>): ExportRecord {
+import { generateBinaryExport } from "../services/export";
+
+export async function createExport(
+  artifactId: string,
+  orgId: string,
+  format: ExportFormat,
+  artifactContent: Record<string, unknown>
+): Promise<ExportRecord> {
   const id = uuidv4();
-  const content = Buffer.from(`Export ${format.toUpperCase()} for artifact ${artifactId}\n${JSON.stringify(artifactContent, null, 2)}\nGenerated at ${new Date().toISOString()}\n`);
+  const content = await generateBinaryExport(
+    format,
+    `Artifact Export (${artifactId})`,
+    { orgId, artifactId },
+    artifactContent
+  );
+
   const rec: ExportRecord = {
     id,
     artifactId,
@@ -43,11 +56,21 @@ export function createExport(artifactId: string, orgId: string, format: ExportFo
   return rec;
 }
 
-export function createBundle(projectId: string, artifactIds: string[], orgId: string, format: ExportFormat, contents: Record<string, unknown>[]): ExportRecord {
+export async function createBundle(
+  projectId: string,
+  artifactIds: string[],
+  orgId: string,
+  format: ExportFormat,
+  contents: Record<string, unknown>[]
+): Promise<ExportRecord> {
   const id = uuidv4();
-  const content = Buffer.from(
-    `Bundle ${format} for project ${projectId} with ${artifactIds.length} artifacts\nIDs: ${artifactIds.join(", ")}\n${JSON.stringify(contents, null, 2)}\n`
+  const content = await generateBinaryExport(
+    format,
+    `Project Transformation Bundle (${projectId})`,
+    { orgId, projectId },
+    contents
   );
+
   const rec: ExportRecord = {
     id,
     artifactId: null,

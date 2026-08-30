@@ -1,12 +1,13 @@
 /**
- * Dashboard service — TASK-022
- * GET /projects/:id/dashboard (+ history), computing maturity/readiness/health scores from artifacts + estimates
+ * Versioned Multi-Dimensional Mathematical Dashboard & Maturity Model (Phase 10)
+ * Replaces naive boolean heuristics with weighted dimensional scoring (0-100 scale & normalized 1-5 scale)
  */
 
 import { listArtifacts } from "../stores/artifacts";
 import { getAllEffortEstimates } from "../stores/effortEstimates";
 import { createMaturitySnapshot, listMaturitySnapshots } from "../stores/maturitySnapshots";
 import { listRoadmapItems } from "../stores/roadmapItems";
+import { DashboardMaturityModel } from "@bta/shared";
 
 export interface DashboardScores {
   digitalMaturity: number; // 1-5
@@ -17,56 +18,114 @@ export interface DashboardScores {
   solutionQuality: number; // 1-5
 }
 
-export interface DashboardResponse {
+export interface DetailedDashboardResponse {
   projectId: string;
   orgId: string;
   scores: DashboardScores;
+  model: DashboardMaturityModel;
   counts: { artifacts: number; roadmapItems: number; estimates: number };
   generatedAt: string;
 }
 
-export function computeDashboard(projectId: string, orgId: string): DashboardResponse {
+export function computeVersionedDashboard(projectId: string, orgId: string): DetailedDashboardResponse {
   const artifacts = listArtifacts(projectId, orgId);
-  // Base scores from artifact counts and maturity
+
+  // Dimension 1: Process Maturity (20%)
   const hasBusinessAnalysis = artifacts.some((a) => a.type === "business_analysis");
-  const hasArchitecture = artifacts.some((a) => a.type === "architecture_hld" || a.type === "architecture_lld");
+  const hasWorkflow = artifacts.some((a) => a.type === "process_workflow" || a.type === "bpmn_diagram");
+  const processScore = hasWorkflow ? 90 : hasBusinessAnalysis ? 70 : 40;
+
+  // Dimension 2: Technology Maturity (20%)
+  const hasHld = artifacts.some((a) => a.type === "architecture_hld");
+  const hasLld = artifacts.some((a) => a.type === "architecture_lld");
+  const techScore = hasHld && hasLld ? 95 : hasHld ? 75 : 45;
+
+  // Dimension 3: Data Maturity (20%)
+  const hasDataModel = artifacts.some((a) => a.type === "er_diagram" || a.type === "api_spec");
+  const dataScore = hasDataModel ? 85 : 50;
+
+  // Dimension 4: Automation Maturity (20%)
+  const hasRecommendation = artifacts.some((a) => a.type === "recommendation");
+  const autoScore = hasRecommendation && hasWorkflow ? 90 : hasRecommendation ? 75 : 45;
+
+  // Dimension 5: Governance & Planning (20%)
   const hasRoadmap = artifacts.some((a) => a.type === "roadmap");
   const hasEffort = artifacts.some((a) => a.type === "effort_estimate");
+  const governanceScore = hasRoadmap && hasEffort ? 90 : hasRoadmap ? 70 : 40;
 
-  // Retrieve roadmap items for this project's artifacts
+  // Overall Digital Maturity = 20% each
+  const overallMaturity =
+    processScore * 0.2 +
+    techScore * 0.2 +
+    dataScore * 0.2 +
+    autoScore * 0.2 +
+    governanceScore * 0.2;
+
+  const estimates = getAllEffortEstimates(orgId).filter((e) =>
+    artifacts.some((a) => a.id === e.artifactId)
+  );
+  const highRiskRatio =
+    estimates.length > 0
+      ? estimates.filter((e) => e.riskLevel === "high").length / estimates.length
+      : 0;
+
+  const aiReadiness100 = (techScore * 0.5 + dataScore * 0.5);
+  const automationOpportunity100 = (processScore * 0.6 + autoScore * 0.4);
+  const projectHealth100 = Math.max(30, 100 - highRiskRatio * 50);
+  const implementationReadiness100 = hasRoadmap && hasEffort ? 85 : hasRoadmap ? 65 : 45;
+  const solutionQuality100 = Math.min(100, artifacts.length * 20 + 20);
+
+  const model: DashboardMaturityModel = {
+    formula_version: "v1.0",
+    calculated_at: new Date().toISOString(),
+    digital_maturity: {
+      overall: Math.round(overallMaturity),
+      dimensions: {
+        process: { score: processScore, weight: 0.2, confidence: 0.9, evidence: ["BPMN/Workflows", "Analysis"] },
+        technology: { score: techScore, weight: 0.2, confidence: 0.9, evidence: ["Architecture HLD/LLD"] },
+        data: { score: dataScore, weight: 0.2, confidence: 0.85, evidence: ["ER / OpenAPI"] },
+        automation: { score: autoScore, weight: 0.2, confidence: 0.85, evidence: ["AI Recommendations"] },
+        governance: { score: governanceScore, weight: 0.2, confidence: 0.9, evidence: ["Roadmap & Estimates"] },
+      },
+    },
+    ai_readiness: Math.round(aiReadiness100),
+    automation_opportunity: Math.round(automationOpportunity100),
+    project_health: Math.round(projectHealth100),
+    implementation_readiness: Math.round(implementationReadiness100),
+  };
+
+  // Convert 0-100 scale to standard 1-5 star scale for backward API parity
+  const to5Scale = (v: number) => Number((1 + (v / 100) * 4).toFixed(2));
+
+  const scores: DashboardScores = {
+    digitalMaturity: to5Scale(overallMaturity),
+    aiReadiness: to5Scale(aiReadiness100),
+    automationOpportunity: to5Scale(automationOpportunity100),
+    projectHealth: to5Scale(projectHealth100),
+    implementationReadiness: to5Scale(implementationReadiness100),
+    solutionQuality: to5Scale(solutionQuality100),
+  };
+
   const roadmapCount = artifacts
     .filter((a) => a.type === "roadmap")
     .reduce((s, a) => s + listRoadmapItems(a.id, orgId).length, 0);
-  const estimates = getAllEffortEstimates(orgId).filter((e) => artifacts.some((a) => a.id === e.artifactId));
-  const avgRisk = estimates.length ? estimates.filter((e) => e.riskLevel === "high").length / estimates.length : 0;
-
-  const digitalMaturity = hasBusinessAnalysis ? (hasArchitecture ? 3.5 : 3.0) : 2.5;
-  const aiReadiness = hasBusinessAnalysis ? 3.2 : 2.0;
-  const automationOpportunity = hasBusinessAnalysis ? 3.8 : 2.5;
-  const projectHealth = hasRoadmap ? Math.max(2, 5 - avgRisk * 2) : 3.0;
-  const implementationReadiness = hasRoadmap && hasEffort ? 4.0 : hasRoadmap ? 3.5 : 2.5;
-  const solutionQuality = artifacts.length >= 3 ? 4.0 : artifacts.length >= 1 ? 3.0 : 2.0;
-
-  const scores: DashboardScores = {
-    digitalMaturity: Number(digitalMaturity.toFixed(2)),
-    aiReadiness: Number(aiReadiness.toFixed(2)),
-    automationOpportunity: Number(automationOpportunity.toFixed(2)),
-    projectHealth: Number(projectHealth.toFixed(2)),
-    implementationReadiness: Number(implementationReadiness.toFixed(2)),
-    solutionQuality: Number(solutionQuality.toFixed(2)),
-  };
 
   return {
     projectId,
     orgId,
     scores,
+    model,
     counts: { artifacts: artifacts.length, roadmapItems: roadmapCount, estimates: estimates.length },
     generatedAt: new Date().toISOString(),
   };
 }
 
+export function computeDashboard(projectId: string, orgId: string) {
+  return computeVersionedDashboard(projectId, orgId);
+}
+
 export function captureSnapshot(projectId: string, orgId: string): ReturnType<typeof createMaturitySnapshot> {
-  const dash = computeDashboard(projectId, orgId);
+  const dash = computeVersionedDashboard(projectId, orgId);
   return createMaturitySnapshot({
     projectId,
     orgId,

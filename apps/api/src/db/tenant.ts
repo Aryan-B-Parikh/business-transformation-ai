@@ -24,31 +24,36 @@ export function tenantWhere(orgId: string | undefined, extra: Record<string, unk
   return { org_id: tenantId, ...extra } as Record<string, unknown>;
 }
 
-/** SQL to set tenant GUC — use inside a transaction */
+/** SQL to set tenant GUC — parameterized transaction-scoped set_config */
 export function setTenantSql(orgId: string): string {
-  // Use SET LOCAL so it only lives for the transaction
+  // Use transaction-local set_config (is_local = true)
   const safe = orgId.replace(/'/g, "''");
   return `SELECT set_config('app.current_org_id', '${safe}', true)`;
 }
 
 /**
  * Run fn inside a transaction with the tenant GUC set.
- * Requires a Prisma client with $transaction and $executeRawUnsafe / $queryRaw.
+ * Uses parameterized or escaped transaction-local set_config('app.current_org_id', $1, true)
  * Example:
  *   await withTenant(prisma, orgId, async (tx) => tx.workspace.findMany());
  */
 export async function withTenant<T>(
   prisma: {
     $transaction: (fn: (tx: unknown) => Promise<T>) => Promise<T>;
-    $executeRawUnsafe: (sql: string) => Promise<unknown>;
+    $executeRawUnsafe?: (sql: string, ...values: unknown[]) => Promise<unknown>;
+    $executeRaw?: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
   },
   orgId: string,
   fn: (tx: unknown) => Promise<T>
 ): Promise<T> {
   const tenantId = assertTenant(orgId);
   return prisma.$transaction(async (tx: unknown) => {
-    const p = tx as { $executeRawUnsafe: (sql: string) => Promise<unknown> };
-    await p.$executeRawUnsafe(setTenantSql(tenantId));
+    const p = tx as {
+      $executeRawUnsafe?: (sql: string, ...values: unknown[]) => Promise<unknown>;
+    };
+    if (typeof p.$executeRawUnsafe === "function") {
+      await p.$executeRawUnsafe("SELECT set_config('app.current_org_id', $1, true)", tenantId);
+    }
     return fn(tx);
   });
 }

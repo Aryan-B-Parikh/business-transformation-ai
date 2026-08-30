@@ -21,7 +21,7 @@ router.post(
   "/artifacts/:id/export",
   authenticate,
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const artifactId = String(req.params.id);
     const art = getArtifact(artifactId);
@@ -34,7 +34,7 @@ router.post(
       res.status(400).json({ error: { code: "BAD_REQUEST", message: `format must be one of ${ALLOWED_FORMATS.join(", ")}` } });
       return;
     }
-    const exp = createExport(artifactId, orgId, format as (typeof ALLOWED_FORMATS)[number], art.content as Record<string, unknown>);
+    const exp = await createExport(artifactId, orgId, format as (typeof ALLOWED_FORMATS)[number], art.content as Record<string, unknown>);
     res.status(201).json({ exportId: exp.id, downloadUrl: exp.downloadUrl, format: exp.format });
   }
 );
@@ -44,7 +44,7 @@ router.post(
   "/projects/:id/export-bundle",
   authenticate,
   authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer"),
-  (req: AuthedRequest, res: Response) => {
+  async (req: AuthedRequest, res: Response) => {
     const orgId = req.user!.orgId;
     const projectId = String(req.params.id);
     const proj = projects.get(projectId);
@@ -73,7 +73,7 @@ router.post(
       }
       contents.push(art.content as Record<string, unknown>);
     }
-    const exp = createBundle(projectId, ids, orgId, fmt, contents);
+    const exp = await createBundle(projectId, ids, orgId, fmt, contents);
     res.status(201).json({ exportId: exp.id, downloadUrl: exp.downloadUrl, format: exp.format });
   }
 );

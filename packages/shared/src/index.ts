@@ -62,3 +62,4 @@ export const RBAC_ROLES: UserRole[] = [
 ];
 
 export * from "./i18n";
+export * from "./contracts";
