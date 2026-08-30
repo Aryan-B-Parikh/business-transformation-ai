@@ -1,6 +1,6 @@
 /**
  * Repository Provider & Factory (All 7 Domain Aggregates)
- * Enforces production fail-fast rules against accidental memory storage.
+ * Production is PostgreSQL-only. Memory repositories are test-only.
  */
 
 import {
@@ -46,25 +46,32 @@ export interface Repositories {
 
 let activeRepositories: Repositories | null = null;
 
+function isTestEnvironment(): boolean {
+  return process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+}
+
 export function initializeRepositories(
-  backend: StorageBackend = (process.env.STORAGE_BACKEND as StorageBackend) || "memory",
+  backend: StorageBackend = (process.env.STORAGE_BACKEND as StorageBackend) || (isTestEnvironment() ? "memory" : "postgres"),
   prisma?: PrismaClientType
 ): Repositories {
-  // Enforce Non-Negotiable Production Fail-Fast Invariant
-  if (process.env.NODE_ENV === "production") {
-    if (backend !== "postgres") {
-      throw new Error(
-        "CRITICAL SECURITY INVARIANT VIOLATION: Production requires STORAGE_BACKEND=postgres. Refusing to start."
-      );
-    }
-    if (!prisma && !process.env.DATABASE_URL) {
-      throw new Error(
-        "CRITICAL PERSISTENCE VIOLATION: DATABASE_URL is missing in production. Refusing to start."
-      );
-    }
+  if (backend !== "postgres" && backend !== "memory") {
+    throw new Error(`Unsupported STORAGE_BACKEND: ${String(backend)}`);
   }
 
-  if (backend === "postgres" && prisma) {
+  // Memory is deliberately unavailable outside tests. This prevents an accidental
+  // production/dev deployment from silently losing persistence.
+  if (backend === "memory" && !isTestEnvironment()) {
+    throw new Error("CRITICAL SECURITY INVARIANT VIOLATION: STORAGE_BACKEND=memory is test-only.");
+  }
+
+  if (backend === "postgres") {
+    if (!process.env.DATABASE_URL && !prisma) {
+      throw new Error("CRITICAL PERSISTENCE VIOLATION: DATABASE_URL is required for PostgreSQL repositories.");
+    }
+    if (!prisma) {
+      throw new Error("CRITICAL PERSISTENCE VIOLATION: PostgreSQL repositories require an initialized Prisma client.");
+    }
+
     activeRepositories = {
       projects: new PostgresProjectRepository(prisma),
       artifacts: new PostgresArtifactRepository(prisma),
@@ -74,26 +81,28 @@ export function initializeRepositories(
       webhooks: new PostgresWebhookRepository(prisma),
       governance: new PostgresGovernanceRepository(prisma),
     };
-  } else {
-    activeRepositories = {
-      projects: new MemoryProjectRepository(),
-      artifacts: new MemoryArtifactRepository(),
-      transformation: new MemoryTransformationRepository(),
-      documents: new MemoryDocumentRepository(),
-      collaboration: new MemoryCollaborationRepository(),
-      webhooks: new MemoryWebhookRepository(),
-      governance: new MemoryGovernanceRepository(),
-    };
+    return activeRepositories;
   }
 
+  activeRepositories = {
+    projects: new MemoryProjectRepository(),
+    artifacts: new MemoryArtifactRepository(),
+    transformation: new MemoryTransformationRepository(),
+    documents: new MemoryDocumentRepository(),
+    collaboration: new MemoryCollaborationRepository(),
+    webhooks: new MemoryWebhookRepository(),
+    governance: new MemoryGovernanceRepository(),
+  };
   return activeRepositories;
 }
 
 export function getRepositories(): Repositories {
-  if (!activeRepositories) {
-    return initializeRepositories();
-  }
+  if (!activeRepositories) return initializeRepositories();
   return activeRepositories;
+}
+
+export function resetRepositoriesForTests(): void {
+  activeRepositories = null;
 }
 
 export * from "./interfaces";
