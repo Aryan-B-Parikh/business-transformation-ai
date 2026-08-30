@@ -1,5 +1,5 @@
 import cors from "cors";
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { i18nMiddleware } from "./middleware/i18n";
@@ -54,7 +54,7 @@ export function createApp(): express.Express {
   app.use("/api/v1", v1);
   app.use("/api/v1", (_req, res) => res.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } }));
 
-  app.use((err: Error & { status?: number }, _req, res, _next) => {
+  app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || 500;
     const code = status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : status === 400 ? "BAD_REQUEST" : "INTERNAL_ERROR";
     if (status >= 500) console.error(err);

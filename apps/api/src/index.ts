@@ -48,7 +48,7 @@ export function initializeProductionRuntime(): void {
     throw new Error("CRITICAL PERSISTENCE VIOLATION: production requires DATABASE_URL");
   }
 
-  initializeRepositories(backend, backend === "postgres" ? prisma : undefined);
+  initializeRepositories(backend, backend === "postgres" ? (prisma as any) : undefined);
 }
 
 if (require.main === module) {
