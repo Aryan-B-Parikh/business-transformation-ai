@@ -33,6 +33,14 @@ export function createApp(): express.Express {
   app.use(i18nMiddleware as unknown as express.RequestHandler);
 
   app.get("/health", (_req, res) => res.json({ service: "core-api", version: "0.1.0", status: "ok" }));
+  app.get("/healthz", (_req, res) => res.json({ status: "healthy", timestamp: new Date().toISOString() }));
+  app.get("/readyz", async (_req, res) => {
+    try {
+      res.json({ status: "ready", timestamp: new Date().toISOString() });
+    } catch {
+      res.status(503).json({ status: "not ready" });
+    }
+  });
   app.get("/api/v1/openapi.json", (_req, res) => res.json(openApiSpec));
   app.use(wellKnownRoutes);
 

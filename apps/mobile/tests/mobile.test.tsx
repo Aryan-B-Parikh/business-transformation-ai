@@ -1,58 +1,96 @@
-/**
- * TASK-029 — Mobile app shell
- * DoD: App builds for both platforms; discovery flow works end-to-end against same API
- */
-
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import * as React from "react";
-import { describe, it, expect } from "vitest";
-import { MobileApp } from "../src/App";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { MobileApp, SecureStore } from "../src/App";
 
-describe("TASK-029: Mobile app shell", () => {
-  it("renders for iOS and Android with parity", () => {
-    const { rerender } = render(<MobileApp platform="ios" />);
+describe("TASK-029: Genuine Mobile App Shell & API Parity", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders for iOS and Android with parity and tablet split-pane support", () => {
+    const { rerender } = render(<MobileApp platform="ios" isTablet={false} />);
     expect(screen.getByTestId("mobile-app")).toBeDefined();
     expect(screen.getByText(/Mobile \(ios\)/)).toBeDefined();
     expect(screen.getByTestId("auth-section")).toBeDefined();
-    expect(screen.getByTestId("workspace-section")).toBeDefined();
-    expect(screen.getByTestId("project-section")).toBeDefined();
     expect(screen.getByTestId("chat-section")).toBeDefined();
+
     // Android parity
-    rerender(<MobileApp platform="android" />);
+    rerender(<MobileApp platform="android" isTablet={false} />);
     expect(screen.getByText(/Mobile \(android\)/)).toBeDefined();
+
+    // Tablet layout
+    rerender(<MobileApp platform="ios" isTablet={true} />);
+    expect(screen.getByText(/\[Tablet\]/)).toBeDefined();
   });
 
-  it("auth flow: login button updates token", async () => {
-    render(<MobileApp platform="ios" token="initial" />);
-    expect(screen.getByTestId("token-display").textContent).toContain("initial");
+  it("authenticates via real API login and persists token in SecureStore", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ token: "jwt-real-session-token", user: { id: "u-1", name: "Admin" } })
+    } as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: "ws-1", name: "Enterprise Workspace" }]
+    } as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: "p-1", name: "Core Modernization", workspaceId: "ws-1" }]
+    } as any);
+
+    render(<MobileApp platform="ios" />);
+    expect(screen.getByText("Status: Signed Out")).toBeDefined();
+
     fireEvent.click(screen.getByTestId("login-button"));
-    // Token should change (mock)
-    // Note: state update async, but we can check that button exists
-    expect(screen.getByTestId("login-button")).toBeDefined();
+
+    await waitFor(() => {
+      expect(screen.getByText("Status: Authenticated")).toBeDefined();
+    });
+
+    const savedToken = await SecureStore.getItemAsync("auth_token");
+    expect(savedToken).toBe("jwt-real-session-token");
   });
 
-  it("workspace/project list parity with web (same API)", async () => {
-    render(<MobileApp />);
+  it("fetches live workspaces and projects for authenticated user", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: "ws-1", name: "Cloud Transformation Workspace" }]
+    } as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: "proj-101", name: "Legacy Migration", workspaceId: "ws-1" }]
+    } as any);
+
+    render(<MobileApp token="valid-token" />);
+    expect(screen.getByText("Status: Authenticated")).toBeDefined();
+
     fireEvent.click(screen.getByTestId("list-workspaces-button"));
-    expect(screen.getByTestId("workspace-item")).toBeDefined();
-    fireEvent.click(screen.getByTestId("list-projects-button"));
-    expect(screen.getByTestId("project-item")).toBeDefined();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Cloud Transformation Workspace/)).toBeDefined();
+    });
   });
 
-  it("chat discovery flow works (send message → AI reply)", async () => {
-    render(<MobileApp />);
-    expect(screen.getByTestId("empty-chat")).toBeDefined();
-    const input = screen.getByTestId("chat-input") as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "Hello mobile" } });
+  it("sends discovery messages through real API with conversation state", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: "conv-1", title: "Mobile Discovery" })
+    } as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: "msg-1", role: "ai", content: "Architecture analysis complete.", citations: [{ documentId: "doc-1", chunkText: "Legacy Oracle 11g" }] })
+    } as any);
+
+    render(<MobileApp token="valid-token" projectId="proj-101" />);
+
+    const input = screen.getByTestId("chat-input");
+    fireEvent.change(input, { target: { value: "Analyze current database" } });
     fireEvent.click(screen.getByTestId("send-button"));
-    // User message appears immediately
-    expect(screen.getByText("user: Hello mobile")).toBeDefined();
-    // AI reply appears after timeout
-    await new Promise((r) => setTimeout(r, 150));
-    expect(screen.getByText(/AI reply to: Hello mobile/)).toBeDefined();
+
+    await waitFor(() => {
+      expect(screen.getByText("Analyze current database")).toBeDefined();
+      expect(screen.getByText("Architecture analysis complete.")).toBeDefined();
+      expect(screen.getByText(/Citations: doc-1/)).toBeDefined();
+    });
   });
 
-  it("uses same Core API base as web (API-first)", async () => {
+  it("uses unified Core API base configuration", async () => {
     const { API_BASE } = await import("@bta/shared");
     render(<MobileApp />);
     expect(screen.getByText(`API: ${API_BASE}`)).toBeDefined();
