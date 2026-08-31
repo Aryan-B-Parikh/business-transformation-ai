@@ -27,18 +27,11 @@
     "eslint-plugin-import": "^2.29.1",
     "jsdom": "^24.0.0",
     "prettier": "^3.2.5",
+    "tsx": "^4.19.2",
     "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
-  },
-  "dependencies": {
-    "@bta/api": "^0.1.0",
-    "@types/pdfkit": "^0.17.6",
-    "docx": "^9.7.1",
-    "exceljs": "^4.4.0",
-    "pdfkit": "^0.20.2",
-    "pptxgenjs": "^4.0.1"
   }
 }
