@@ -14,6 +14,8 @@ import { generateDataModel } from "../services/dataModelingAgent";
 import { renderToSvg, isValidSvg } from "../services/diagramRenderer";
 import { generateProcess } from "../services/processAgent";
 import { generateUx } from "../services/uxAgent";
+import { generateRoadmap } from "../services/plannerAgent";
+import { generateEstimation } from "../services/estimationAgent";
 import { ArtifactType, ArtifactStatus, ArtifactContent } from "@bta/shared";
 
 
@@ -106,6 +108,16 @@ router.post(
         case "er_diagram":
         case "api_spec": {
           const r = await generateDataModel({ projectId, orgId, createdBy: userId, params: params as { domain?: string } });
+          result = { artifactId: r.artifactId, content: r.content };
+          break;
+        }
+        case "roadmap": {
+          const r = await generateRoadmap({ projectId, orgId, createdBy: userId, params: params as { horizonMonths?: number } });
+          result = { artifactId: r.artifactId, content: r.content };
+          break;
+        }
+        case "effort_estimate": {
+          const r = await generateEstimation({ projectId, orgId, createdBy: userId });
           result = { artifactId: r.artifactId, content: r.content };
           break;
         }

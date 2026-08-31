@@ -37,7 +37,7 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
       initializeRepositories("postgres", appPrisma as any);
     }
 
-    // Clean any prior run fixtures
+    // Seed Organization
     await prisma.organization.upsert({
       where: { id: orgId },
       update: {},
@@ -46,6 +46,7 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
 
     const passwordHash = await bcrypt.hash(userPassword, 10);
 
+    // Seed User
     await prisma.user.upsert({
       where: { id: userId },
       update: { orgId, name: "E2E True Golden User", role: "org_admin", passwordHash },
@@ -100,6 +101,7 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
     expect(jwksRes.status).toBe(200);
     expect(jwksRes.body.keys).toBeDefined();
     expect(Array.isArray(jwksRes.body.keys)).toBe(true);
+    expect(jwksRes.body.keys.length).toBeGreaterThan(0);
   });
 
   it("2. Workspace & Project Creation", async () => {
@@ -120,7 +122,7 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
     projectId = projRes.body.id;
   });
 
-  it("3. Document Ingestion, Parsing, Chunking & Vector Persistence", async () => {
+  it("3. Document Ingestion, Parsing, Chunking & Vector Embedding Persistence", async () => {
     const pdfContent = Buffer.from(
       "%PDF-1.4 mock enterprise context. Current architecture: Oracle 11g database and monolithic Java backend. Target: Cloud Native Microservices."
     );
@@ -140,10 +142,11 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
     expect(statusRes.body.parsedStatus).toBe("parsed");
     expect(statusRes.body.chunkCount).toBeGreaterThan(0);
 
-    // Verify chunks and embeddings in PostgreSQL database directly
+    // Verify chunks and pgvector embeddings in PostgreSQL database directly
     const chunks = await prisma.documentChunk.findMany({ where: { documentId: docId } });
     expect(chunks.length).toBeGreaterThan(0);
     expect(chunks[0].chunkText.length).toBeGreaterThan(0);
+    expect(chunks[0].embedding).toBeDefined();
   });
 
   it("4. Conversation & RAG Discovery with Mandatory Citations", async () => {
@@ -160,9 +163,11 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
       .send({ content: "What is our current architecture and database?" });
     expect(msgRes.status).toBe(201);
     expect(msgRes.body.content).toBeDefined();
+    expect(msgRes.body.citations).toBeDefined();
+    expect(Array.isArray(msgRes.body.citations)).toBe(true);
   });
 
-  it("5. Sequence through all 12 Persistent Transformation Journey Stages", async () => {
+  it("5. Sequence through 12-Stage Journey with Concurrency & Rollback Guarantees", async () => {
     const all12Stages: JourneyStage[] = [
       "idea",
       "discovery",
@@ -178,7 +183,7 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
       "implementation"
     ];
 
-    // Initialize journey at stage 1 ('idea')
+    // 5.1 Initialize journey at stage 1 ('idea')
     const initRes = await request(app)
       .post(`/api/v1/projects/${projectId}/journey/transition`)
       .set("Authorization", `Bearer ${token}`)
@@ -187,7 +192,19 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
     expect(initRes.body.stage).toBe("idea");
     journeyVersion = initRes.body.stage_version || 1;
 
-    // Transition sequentially through the remaining 11 stages
+    // 5.2 Optimistic Lock Failure (stale version 99999)
+    const staleRes = await request(app)
+      .post(`/api/v1/projects/${projectId}/journey/transition`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        stage: "discovery",
+        status: "in_progress",
+        version: 99999,
+        reason: "Stale update attempt"
+      });
+    expect([409, 400]).toContain(staleRes.status);
+
+    // 5.3 Progress through all 12 stages
     for (let i = 1; i < all12Stages.length; i++) {
       const targetStage = all12Stages[i];
       const transRes = await request(app)
@@ -213,18 +230,47 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
       const current = stateRes.body.find((s: any) => s.stage === targetStage);
       expect(current).toBeDefined();
     }
+
+    // 5.4 Rollback Verification
+    const rollbackRes = await request(app)
+      .post(`/api/v1/projects/${projectId}/journey/rollback`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        targetStage: "approved",
+        version: journeyVersion,
+        reason: "Rollback for final sign-off check"
+      });
+    expect(rollbackRes.status).toBe(200);
+    expect(rollbackRes.body.stage).toBe("approved");
+    journeyVersion = rollbackRes.body.stage_version || (journeyVersion + 1);
+
+    // Transition back to implementation
+    const reApproveRes = await request(app)
+      .post(`/api/v1/projects/${projectId}/journey/transition`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        stage: "implementation",
+        status: "in_progress",
+        version: journeyVersion,
+        reason: "Final implementation start"
+      });
+    expect(reApproveRes.status).toBe(200);
+    journeyVersion = reApproveRes.body.stage_version || (journeyVersion + 1);
   });
 
-  it("6. Real AI Transformation Engine Invocations (/artifacts/generate)", async () => {
-    const engineArtifactTypes = [
+  it("6. Real Invocations for All Dedicated AI Transformation Engines (/artifacts/generate)", async () => {
+    const all8Engines = [
       "business_analysis",
       "architecture_hld",
       "process_workflow",
       "wireframe",
-      "er_diagram"
+      "er_diagram",
+      "api_spec",
+      "roadmap",
+      "effort_estimate"
     ];
 
-    for (const type of engineArtifactTypes) {
+    for (const type of all8Engines) {
       const artRes = await request(app)
         .post(`/api/v1/projects/${projectId}/artifacts/generate`)
         .set("Authorization", `Bearer ${token}`)
@@ -242,8 +288,8 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(dashRes.status).toBe(200);
     expect(dashRes.body.scores).toBeDefined();
-    expect(dashRes.body.counts.artifacts).toBeGreaterThanOrEqual(engineArtifactTypes.length);
-  }, 30000);
+    expect(dashRes.body.counts.artifacts).toBeGreaterThanOrEqual(all8Engines.length);
+  }, 40000);
 
   it("7. Collaboration, Review, Human Approval & Governance Audit Flow", async () => {
     const mainArtifact = artifacts.find(a => a.type === "architecture_hld") || artifacts[0];
@@ -293,12 +339,22 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
       expect(expRes.body.downloadUrl).toBeDefined();
       expect(expRes.body.format).toBe(format);
 
-      // Download the export
+      // Download the export and validate buffer headers
       const dlRes = await request(app)
         .get(expRes.body.downloadUrl)
-        .set("Authorization", `Bearer ${token}`);
+        .set("Authorization", `Bearer ${token}`)
+        .responseType("blob");
 
       expect([200, 302]).toContain(dlRes.status);
+      if (dlRes.status === 200) {
+        const buffer = Buffer.from(dlRes.body);
+        if (format === "pdf") {
+          expect(buffer.slice(0, 4).toString()).toBe("%PDF");
+        } else {
+          // DOCX, XLSX, PPTX are valid OpenXML zip packages starting with PK
+          expect(buffer.slice(0, 2).toString()).toBe("PK");
+        }
+      }
     }
   });
 });

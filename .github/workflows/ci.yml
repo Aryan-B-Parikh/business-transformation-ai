@@ -104,4 +104,8 @@ jobs:
     needs: [test-e2e]
     runs-on: ubuntu-latest
     steps:
-      - run: echo "All 15 Gates verified. 10/10 Enterprise Release Approved."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npx tsx scripts/verify-release-gate.ts
