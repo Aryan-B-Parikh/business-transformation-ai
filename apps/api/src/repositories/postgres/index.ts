@@ -107,7 +107,7 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
     return withTenant<WorkspaceEntity>(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.workspace.create({
-        data: { orgId, name: data.name, description: data.description, createdBy: data.createdBy },
+        data: { orgId, name: data.name, createdBy: data.createdBy },
       });
     });
   }
@@ -141,7 +141,6 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
           orgId: orgId,
           workspaceId: workspaceId,
           name: data.name,
-          description: data.description,
           status: "active",
         },
       });
@@ -186,9 +185,10 @@ export class PostgresProjectRepository implements IProjectAggregateRepository {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
+      const { description, ...validUpdates } = updates;
       return p.project.update({
         where: { id, orgId: orgId },
-        data: updates
+        data: validUpdates
       });
     });
   }
