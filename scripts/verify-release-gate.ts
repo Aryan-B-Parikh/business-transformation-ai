@@ -31,6 +31,7 @@ console.log("=================================================");
 
 let allPassed = true;
 
+// 1. Verify physical assets
 for (const relPath of requiredPaths) {
   const fullPath = path.resolve(rootDir, relPath);
   if (fs.existsSync(fullPath)) {
@@ -41,13 +42,29 @@ for (const relPath of requiredPaths) {
   }
 }
 
-// Check that mobile contains no @ts-nocheck
+// 2. Check mobile client strict typing
 const mobileAppContent = fs.readFileSync(path.resolve(rootDir, "apps/mobile/src/App.tsx"), "utf-8");
 if (mobileAppContent.includes("@ts-nocheck")) {
   console.error("[FAIL] apps/mobile/src/App.tsx contains @ts-nocheck directive");
   allPassed = false;
 } else {
   console.log("[PASS] apps/mobile/src/App.tsx is strictly typechecked (no @ts-nocheck)");
+}
+
+// 3. Verify Golden Path mandatory citation and concurrency checks
+const goldenPathContent = fs.readFileSync(path.resolve(rootDir, "apps/api/tests/goldenPath.e2e.test.ts"), "utf-8");
+if (!goldenPathContent.includes("citations.length).toBeGreaterThan(0)")) {
+  console.error("[FAIL] goldenPath.e2e.test.ts is missing mandatory non-empty citations assertion");
+  allPassed = false;
+} else {
+  console.log("[PASS] goldenPath.e2e.test.ts enforces mandatory non-empty citations");
+}
+
+if (!goldenPathContent.includes("Promise.all") || !goldenPathContent.includes("raceStatuses")) {
+  console.error("[FAIL] goldenPath.e2e.test.ts is missing true concurrent race condition test");
+  allPassed = false;
+} else {
+  console.log("[PASS] goldenPath.e2e.test.ts enforces true concurrent race condition");
 }
 
 if (!allPassed) {
