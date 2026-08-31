@@ -1,5 +1,5 @@
-import { PrismaClient, RiskLevel } from "@prisma/client";
-const prisma = new PrismaClient();
+import { prisma } from "../db/client";
+import { RiskLevel } from "@prisma/client";
 import { getRepositories } from "../repositories";
 /**
  * AI Planning Engine (estimation) — TASK-021

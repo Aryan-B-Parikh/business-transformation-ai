@@ -5,6 +5,7 @@ import { Chat } from "./components/Chat";
 import { Dashboard } from "./components/Dashboard";
 import { DiscoverySummary, DiscoverySummaryData } from "./components/DiscoverySummary";
 import { DocumentUpload } from "./components/DocumentUpload";
+import { JourneyStepper } from "./components/JourneyStepper";
 import { LanguageSwitcher } from "./components/LanguageSwitcher";
 
 export const APP_NAME = "Business Transformation AI";
@@ -51,12 +52,15 @@ export function App({ projectId = "default-proj", token = "test-token" }: AppPro
 
   return <div data-testid="app" style={{ fontFamily: "sans-serif", maxWidth: 1100, margin: "0 auto", padding: 16 }}>
     <header><h1>{t("app.title", lang)}</h1><p data-testid="api-base">API: {API_BASE_URL}</p><LanguageSwitcher value={lang} onChange={setLang} /><p data-testid="current-lang">Current: {lang}</p></header>
+    <section><h2>Journey (12 stages)</h2><JourneyStepper projectId={projectId} token={token} /></section>
     <section><h2>1. {t("upload.title", lang)}</h2><DocumentUpload projectId={projectId} token={token} onUploaded={setUploadedDoc} />{uploadedDoc ? <p data-testid="uploaded-indicator">Document uploaded</p> : null}</section>
     <section><h2>2. {t("chat.title", lang)}</h2><Chat projectId={projectId} token={token} onDiscoverySummary={setSummary as (s: unknown) => void} /></section>
     <section><h2>3. {t("discovery.summary", lang)}</h2>{summary ? <DiscoverySummary data={summary} /> : <p data-testid="no-summary">No discovery summary yet.</p>}</section>
-    <section><h2>4. Artifact Viewer / Editor</h2>{artifact ? <><ArtifactViewer artifact={artifact} onEdit={async updates => { setArtifact((prev: any) => ({ ...prev, ...updates, version: (prev?.version || 1) + 1 })); try { const { updateArtifact } = await import("./api/client"); const res = await updateArtifact(artifact.id, updates, token!); if (res) setArtifact(res); } catch (e) { console.error(e); } }} onRegenerate={async feedback => { setArtifact((prev: any) => ({ ...prev, version: (prev?.version || 1) + 1 })); try { const { regenerateArtifact } = await import("./api/client"); const res = await regenerateArtifact(artifact.id, feedback || "", token!, artifact.version); if (res) setArtifact(res); } catch (e) { console.error(e); } }} /><p data-testid="artifact-version">Version: {artifact.version}</p></> : <p data-testid="no-artifacts">No artifacts generated yet.</p>}</section>
+    <section><h2>4. Artifact Viewer / Editor</h2>
+      <p data-testid="advisory-gate" style={{ fontSize: 12, color: "#b45309", background: "#fef3c7", padding: 6, borderRadius: 4 }}>Advisory: AI drafts are <strong>draft</strong> until moved to <em>in_review</em> and explicitly <em>approved</em> via review workflow.</p>
+      {artifact ? <><ArtifactViewer artifact={artifact} onEdit={async updates => { setArtifact((prev: any) => ({ ...prev, ...updates, version: (prev?.version || 1) + 1 })); try { const { updateArtifact } = await import("./api/client"); const res = await updateArtifact(artifact.id, updates, token!); if (res) setArtifact(res); } catch (e) { console.error(e); } }} onRegenerate={async feedback => { setArtifact((prev: any) => ({ ...prev, version: (prev?.version || 1) + 1 })); try { const { regenerateArtifact } = await import("./api/client"); const res = await regenerateArtifact(artifact.id, feedback || "", token!, artifact.version); if (res) setArtifact(res); } catch (e) { console.error(e); } }} /><p data-testid="artifact-version">Version: {artifact.version} | Status: {(artifact as { status?: string }).status || "draft"}</p></> : <p data-testid="no-artifacts">No artifacts generated yet.</p>}</section>
     <section><h2>5. Transformation Dashboard (TASK-022)</h2><Dashboard scores={dashboardScores} counts={counts} /></section>
-    <footer style={{ marginTop: 24, fontSize: 12 }}><p>Advisory-only AI output - requires human review before implementation.</p></footer>
-  </div>;
+    <footer style={{ marginTop: 24, fontSize: 12 }}><p>Advisory-only AI output - requires human review before implementation.</p>{error ? <p data-testid="error" style={{ color: "#b91c1c" }}>{error}</p> : null}</footer>
+   </div>;
 }
 export default App;

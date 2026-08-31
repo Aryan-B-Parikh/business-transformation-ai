@@ -1,0 +1,9 @@
+{
+  "common": {
+    "welcome": "Добро пожаловать в Business Transformation AI",
+    "dashboard": "Панель управления",
+    "projects": "Проекты",
+    "settings": "Настройки",
+    "language": "Язык"
+  }
+}

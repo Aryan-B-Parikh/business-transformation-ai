@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bta-api
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: bta-api } }
+  template:
+    metadata: { labels: { app: bta-api } }
+    spec:
+      containers:
+      - name: api
+        image: bta/api:0.1.0
+        ports: [{ containerPort: 3001 }]
+        env:
+        - { name: DATABASE_URL, valueFrom: { secretKeyRef: { name: bta-secrets, key: DATABASE_URL } } }
+        - { name: STORAGE_BACKEND, value: "postgres" }
+        - { name: REDIS_URL, valueFrom: { secretKeyRef: { name: bta-secrets, key: REDIS_URL } } }
+        - { name: JWT_ISSUER, value: "bta" }
+        - { name: JWT_AUDIENCE, value: "bta-api" }
+        livenessProbe: { httpGet: { path: /healthz, port: 3001 }, periodSeconds: 10 }
+        readinessProbe: { httpGet: { path: /readyz, port: 3001 }, periodSeconds: 5 }
+        resources: { requests: { cpu: "500m", memory: "512Mi" }, limits: { cpu: "1000m", memory: "1024Mi" } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: bta-ai-orchestrator }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: bta-ai-orchestrator } }
+  template:
+    metadata: { labels: { app: bta-ai-orchestrator } }
+    spec:
+      containers:
+      - name: orchestrator
+        image: bta/ai-orchestrator:0.1.0
+        ports: [{ containerPort: 3101 }]
+        env: [{ name: AI_ORCHESTRATOR_TOKEN, valueFrom: { secretKeyRef: { name: bta-secrets, key: AI_ORCHESTRATOR_TOKEN } } }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: bta-worker }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: bta-worker } }
+  template:
+    metadata: { labels: { app: bta-worker } }
+    spec:
+      containers:
+      - name: worker
+        image: bta/api:0.1.0
+        command: ["node", "dist/workers/index.js"]
+        env:
+        - { name: DATABASE_URL, valueFrom: { secretKeyRef: { name: bta-secrets, key: DATABASE_URL } } }
+        - { name: BTA_WORKER_ORG_ID, value: "00000000-0000-0000-0000-000000000000" }

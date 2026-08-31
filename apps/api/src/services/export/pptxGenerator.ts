@@ -55,21 +55,20 @@ export async function generatePptx(
       fontFace: "Arial",
     });
 
-    const entries = Object.entries(item).slice(0, 6); // Top entries per slide
-    const rows: any[] = [
-      [
-        { text: "Attribute", options: { bold: true, fill: "0284C7", color: "FFFFFF" } },
-        { text: "Description / Output", options: { bold: true, fill: "0284C7", color: "FFFFFF" } },
-      ],
-    ];
-
-    for (const [k, v] of entries) {
+    // Prioritize structured fields for slide
+    const priorityKeys = ["hldSections","lldSections","components","integrations","diagramSpec","erDiagram","bpmnJson","screens","phases"];
+    const orderedEntries = [...Object.entries(item)].sort((a,b)=> {
+      const ai = priorityKeys.indexOf(a[0]); const bi = priorityKeys.indexOf(b[0]);
+      if(ai===-1 && bi===-1) return 0; if(ai===-1) return 1; if(bi===-1) return -1; return ai-bi;
+    }).slice(0, 8);
+    const rows: any[] = [[{ text: "Attribute", options: { bold: true, fill: "0284C7", color: "FFFFFF" } }, { text: "Description / Output", options: { bold: true, fill: "0284C7", color: "FFFFFF" } }]];
+    for (const [k, v] of orderedEntries) {
       if (v === null || v === undefined) continue;
-      const formatted = typeof v === "object" ? JSON.stringify(v) : String(v);
-      rows.push([
-        { text: k },
-        { text: formatted.length > 200 ? formatted.substring(0, 197) + "..." : formatted },
-      ]);
+      let formatted: string;
+      if(k==="diagramSpec" && typeof v==="object"){ const spec=v as {nodes?:unknown[];edges?:unknown[]}; formatted=`${Array.isArray(spec.nodes)?spec.nodes.length:0} nodes, ${Array.isArray(spec.edges)?spec.edges.length:0} edges`; }
+      else if(Array.isArray(v) && (k==="hldSections"||k==="lldSections")){ formatted=(v as Array<{title:string}>).map(s=>s.title).join(", ").slice(0,300); }
+      else formatted = typeof v === "object" ? JSON.stringify(v) : String(v);
+      rows.push([{ text: k }, { text: formatted.length > 300 ? formatted.substring(0, 297) + "..." : formatted }]);
     }
 
     slide.addTable(rows, {

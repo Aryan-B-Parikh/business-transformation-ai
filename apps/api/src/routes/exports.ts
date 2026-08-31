@@ -6,6 +6,7 @@ import { authorize } from "../middleware/rbac";
 import { generateBinaryExport } from "../services/export";
 import { storeExport, generateSignedUrl, getMemoryFile } from "../services/storage";
 import { IExportRepository, MemoryExportRepository, PostgresExportRepository } from "../services/export/exportRepository";
+import { rateLimit } from "../middleware/rateLimit";
 import { v4 as uuidv4 } from "uuid";
 
 const router = Router();
@@ -25,7 +26,7 @@ async function persistExport(orgId: string, projectId: string, format: ExportFor
 const canExport = authorize("org_admin", "workspace_admin", "contributor", "reviewer");
 const canDownload = authorize("org_admin", "workspace_admin", "contributor", "reviewer", "viewer");
 
-router.post("/artifacts/:id/export", authenticate, canExport, async (req: AuthedRequest, res: Response) => {
+router.post("/artifacts/:id/export", authenticate, rateLimit({limit:10}), canExport, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId; const artifactId = String(req.params.id); const art = await getRepositories().artifacts.findById(orgId, artifactId);
   if (!art) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Artifact not found" } });
   const format = req.body?.format; if (!isFormat(format)) return res.status(400).json({ error: { code: "BAD_REQUEST", message: `format must be one of ${ALLOWED_FORMATS.join(", ")}` } });
@@ -33,7 +34,7 @@ router.post("/artifacts/:id/export", authenticate, canExport, async (req: Authed
   const result = await persistExport(orgId, art.projectId, format, content); return res.status(201).json({ exportId: result.id, downloadUrl: result.downloadUrl, format: result.format });
 });
 
-router.post("/projects/:id/export-bundle", authenticate, canExport, async (req: AuthedRequest, res: Response) => {
+router.post("/projects/:id/export-bundle", authenticate, rateLimit({limit:10}), canExport, async (req: AuthedRequest, res: Response) => {
   const orgId = req.user!.orgId; const projectId = String(req.params.id);
   if (!(await getRepositories().projects.findProjectById(orgId, projectId))) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Project not found" } });
   const ids = req.body?.artifact_ids ?? req.body?.artifactIds; const format = req.body?.format;

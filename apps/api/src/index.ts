@@ -47,6 +47,18 @@ export function initializeProductionRuntime(): void {
   if (production && !process.env.DATABASE_URL) {
     throw new Error("CRITICAL PERSISTENCE VIOLATION: production requires DATABASE_URL");
   }
+  if (production) {
+    const secret = process.env.JWT_SECRET || process.env.JWT_PRIVATE_KEY;
+    if (!secret || secret.length < 32 || secret === "dev-secret" || secret === "change-me") {
+      throw new Error("CRITICAL SECURITY VIOLATION: production requires JWT_SECRET/JWT_PRIVATE_KEY >=32 chars and not a default value");
+    }
+    if (!process.env.JWT_ISSUER || !process.env.JWT_AUDIENCE) {
+      throw new Error("CRITICAL SECURITY VIOLATION: production requires JWT_ISSUER and JWT_AUDIENCE");
+    }
+    if (!process.env.WEBHOOK_SIGNING_SECRET || process.env.WEBHOOK_SIGNING_SECRET.length < 16) {
+      console.warn("[core-api] WARNING: WEBHOOK_SIGNING_SECRET not set or too short — webhook delivery will fail until configured");
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   initializeRepositories(backend, backend === "postgres" ? (prisma as any) : undefined);

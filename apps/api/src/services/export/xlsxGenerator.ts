@@ -48,9 +48,19 @@ export async function generateXlsx(
       fgColor: { argb: "FF0284C7" },
     };
 
+    // Known shapes: diagramSpec, hldSections etc — give dedicated rows
+    if (Array.isArray((item as Record<string, unknown>).hldSections)) {
+      for (const s of (item as Record<string, unknown>).hldSections as Array<{title:string;description:string}>) sheet.addRow({ property: `HLD: ${s.title}`, details: s.description });
+    }
+    if ((item as Record<string, unknown>).diagramSpec) {
+      const spec = (item as Record<string, unknown>).diagramSpec as { nodes?: unknown[]; edges?: {from:string;to:string;label?:string}[] };
+      sheet.addRow({ property: "Diagram nodes", details: Array.isArray(spec.nodes) ? spec.nodes.map((n: unknown)=>(n as {label?:string}).label||String(n)).join(", ").slice(0,500) : "" });
+      if (Array.isArray(spec.edges)) sheet.addRow({ property: "Diagram edges", details: spec.edges.map((e)=>`${e.from} -> ${e.to}${e.label?` (${e.label})`:""}`).join(", ").slice(0,800) });
+    }
     for (const [k, v] of Object.entries(item)) {
+      if (["hldSections","lldSections","diagramSpec"].includes(k)) continue;
       if (v === null || v === undefined) continue;
-      const formatted = typeof v === "object" ? JSON.stringify(v, null, 2) : String(v);
+      const formatted = typeof v === "object" ? JSON.stringify(v, null, 2).slice(0,8000) : String(v);
       sheet.addRow({ property: k, details: formatted });
     }
   });

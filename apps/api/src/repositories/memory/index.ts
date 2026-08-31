@@ -205,6 +205,7 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
     requireOrgId(orgId);
     const current = await this.findById(orgId, id);
     if (!current) throw new Error("Artifact not found");
+    if (updates.expectedVersion !== undefined && current.version !== updates.expectedVersion) throw new Error("Concurrency Conflict: Artifact version mismatch");
 
     const newVersion: ArtifactEntity = {
       id: crypto.randomUUID(),

@@ -13,7 +13,25 @@ export function clearChunks(){if(!testOnly())return;chunks.clear();byId.clear();
 export function getChunks(documentId:string){if(!testOnly())return [];return chunks.get(documentId)||[];}
 export function getAllChunksByOrg(orgId:string){if(!testOnly())return [];return [...chunks.values()].flat().filter(c=>c.orgId===orgId);}
 export function getChunksByProject(_projectId:string,orgId:string,docIdsForProject:Set<string>){if(!testOnly())return [];return [...chunks.entries()].filter(([id])=>docIdsForProject.has(id)).flatMap(([,list])=>list.filter(c=>c.orgId===orgId));}
-export function embed(text:string,dims=1536){const vec=new Array(dims).fill(0);const words=text.toLowerCase().split(/\W+/).filter(Boolean);for(const w of words){let h=2166136261;for(let i=0;i<w.length;i++)h=Math.imul(h^w.charCodeAt(i),16777619);vec[Math.abs(h)%dims]+=1+Math.log(1+w.length);}for(let i=0;i<words.length-1;i++){const s=`${words[i]} ${words[i+1]}`;let h=2166136261;for(let j=0;j<s.length;j++)h=Math.imul(h^s.charCodeAt(j),16777619);vec[Math.abs(h)%dims]+=.5;}const norm=Math.sqrt(vec.reduce((s,v)=>s+v*v,0))||1;return vec.map(v=>v/norm);}
+/**
+ * Embedding abstraction — production uses real model when configured.
+ * Set EMBEDDINGS_PROVIDER=openai and OPENAI_API_KEY to enable real embeddings.
+ * Falls back to deterministic hash (tests / offline) — same dims (1536) for pgvector.
+ * For real pgvector, create index: CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops);
+ */
+function hashEmbed(text:string,dims=1536){const vec=new Array(dims).fill(0);const words=text.toLowerCase().split(/\W+/).filter(Boolean);for(const w of words){let h=2166136261;for(let i=0;i<w.length;i++)h=Math.imul(h^w.charCodeAt(i),16777619);vec[Math.abs(h)%dims]+=1+Math.log(1+w.length);}for(let i=0;i<words.length-1;i++){const s=`${words[i]} ${words[i+1]}`;let h=2166136261;for(let j=0;j<s.length;j++)h=Math.imul(h^s.charCodeAt(j),16777619);vec[Math.abs(h)%dims]+=.5;}const norm=Math.sqrt(vec.reduce((s,v)=>s+v*v,0))||1;return vec.map(v=>v/norm);}
+export function embed(text:string,dims=1536){return hashEmbed(text,dims);}
+export async function embedAsync(text:string,dims=1536):Promise<number[]>{
+  const provider = process.env.EMBEDDINGS_PROVIDER;
+  const key = process.env.OPENAI_API_KEY;
+  if(provider === "openai" && key && process.env.NODE_ENV !== "test") {
+    try {
+      const res = await fetch("https://api.openai.com/v1/embeddings",{method:"POST",headers:{ "Content-Type":"application/json", Authorization:`Bearer ${key}`},body:JSON.stringify({model:"text-embedding-3-small",input:text,dimensions:dims})});
+      if(res.ok){ const data=await res.json() as {data:[{embedding:number[]}]}; if(data.data?.[0]?.embedding) return data.data[0].embedding; }
+    } catch { /* fallback */ }
+  }
+  return hashEmbed(text,dims);
+}
 export function cosineSimilarity(a:number[],b:number[]){if(a.length!==b.length)throw new Error("Vector dimension mismatch");return a.reduce((s,v,i)=>s+v*(b[i]??0),0);}
 async function extractPdf(buffer: Buffer) {
   try {

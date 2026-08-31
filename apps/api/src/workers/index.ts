@@ -2,50 +2,80 @@ import { getRepositories } from "../repositories";
 import { deliverWebhookHttp } from "../services/webhook/dispatcher";
 import { prisma } from "../db/client";
 
-async function processWebhooks() {
-  const repo = getRepositories().webhooks;
-  const events = await repo.listPendingOutboxEvents(10);
-  for (const event of events) {
-    try {
-      const orgId = event.orgId;
-      // We don't have webhook config id in event, but we can look up configs by orgId that match the event_type
-      const orgConfigs = await prisma.$queryRawUnsafe<any[]>(`SELECT * FROM webhook_configs WHERE org_id = $1::uuid`, orgId);
-      let delivered = false;
-      let lastError = null;
+const MAX_CONCURRENCY = Number(process.env.WORKER_CONCURRENCY || 5);
+let shuttingDown = false;
 
+async function processWebhooks(): Promise<number> {
+  const repo = getRepositories().webhooks;
+  const events = await repo.listPendingOutboxEvents(MAX_CONCURRENCY);
+  let processed = 0;
+  // Concurrency-limited batch (sequential for now; replace with p-limit for parallel)
+  for (const event of events) {
+    if (shuttingDown) break;
+    const start = Date.now();
+    try {
+      const orgId = (event as unknown as { orgId: string }).orgId || (event as unknown as { org_id: string }).org_id;
+      // Idempotency: skip if already delivered/dead_letter (race with SKIP LOCKED)
+      if ((event as unknown as { status: string }).status === "delivered" || (event as unknown as { status: string }).status === "dead_letter") continue;
+      const orgConfigs = await (prisma as unknown as { $queryRawUnsafe: (s: string, ...a: unknown[]) => Promise<Array<{ events: string[]; url: string; secret?: string; id: string; workspace_id?: string }>> }).$queryRawUnsafe(`SELECT id, url, events, secret FROM webhook_configs WHERE org_id = $1::uuid`, orgId).catch(() => [] as Array<{ events: string[]; url: string }>);
+      let delivered = false;
+      let lastError: string | null = null;
+      let matched = 0;
       for (const config of orgConfigs) {
-        // Just mock matching for now, in real life events jsonb would be checked
-        if (config.events.includes(event.event_type) || config.events.includes("*")) {
-          const res = await deliverWebhookHttp(config, event.event_type, event.payload as any);
-          if (!res.success) {
-            lastError = res.error;
-          } else {
-            delivered = true;
-          }
+        const evts = Array.isArray(config.events) ? config.events : [];
+        if (evts.includes(event.event_type) || evts.includes("*")) {
+          matched++;
+          const res = await deliverWebhookHttp(config as unknown as { url: string; secret?: string; id: string }, event.event_type, event.payload as unknown as Record<string, unknown>);
+          if (!res.success) lastError = res.error || "delivery failed";
+          else delivered = true;
         }
       }
-
-      if (delivered) {
+      if (matched === 0) {
+        // No configs matched → delivered (no-op), audit
         await repo.markOutboxEventResult(event.id, "delivered");
-      } else if (lastError) {
-        await repo.markOutboxEventResult(event.id, event.attempt_count >= 4 ? "dead_letter" : "failed", lastError);
+      } else if (delivered) {
+        await repo.markOutboxEventResult(event.id, "delivered");
       } else {
-        // No configs matched, mark delivered
-        await repo.markOutboxEventResult(event.id, "delivered");
+        const attempt = (event as unknown as { attempt_count: number }).attempt_count ?? 0;
+        const nextStatus = attempt >= 4 ? "dead_letter" as const : "failed" as const;
+        await repo.markOutboxEventResult(event.id, nextStatus, lastError || "all deliveries failed");
       }
-    } catch (e: any) {
-      console.error(`Failed to process outbox event ${event.id}:`, e);
-      await repo.markOutboxEventResult(event.id, "failed", e.message);
+      processed++;
+      const dur = Date.now() - start;
+      // Observability: webhook latency hist (reuse metrics if available)
+      try { const { observeHistogram } = await import("../utils/metrics"); observeHistogram("webhook_delivery_latency_ms", dur); } catch { /* ignore */ }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`Failed to process outbox event ${event.id}:`, msg);
+      await repo.markOutboxEventResult(event.id, (event as unknown as { attempt_count: number }).attempt_count >= 4 ? "dead_letter" : "failed", msg).catch(() => undefined);
     }
   }
+  return processed;
 }
 
-async function startWorkers() {
-  console.log("Starting BTA Durable Workers...");
-  setInterval(() => {
+async function startWorkers(): Promise<NodeJS.Timeout> {
+  console.log(`Starting BTA Durable Workers (concurrency=${MAX_CONCURRENCY}, interval=5s)…`);
+  const timer = setInterval(() => {
+    if (shuttingDown) return;
     processWebhooks().catch(e => console.error("Webhook worker error:", e));
   }, 5000);
+  // Graceful shutdown
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[workers] ${signal} received — draining`);
+    clearInterval(timer);
+    // Allow in-flight to settle
+    await new Promise(r => setTimeout(r, 1000));
+    try { await prisma.$disconnect(); } catch { /* ignore */ }
+    process.exit(0);
+  };
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  return timer;
 }
+
+export { processWebhooks, startWorkers };
 
 if (require.main === module) {
   startWorkers();

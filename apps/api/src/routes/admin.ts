@@ -32,7 +32,6 @@ router.get(
       res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin can view usage" } });
       return;
     }
-    // Mock usage metrics: count artifacts, workspaces, etc.
     const wss = await getRepositories().projects.listWorkspaces(orgId);
     const wsCount = wss.length;
     let projCount = 0;
@@ -44,7 +43,17 @@ router.get(
         artCount += (await getRepositories().artifacts.listByProject(orgId, p.id)).length;
       }
     }
-    res.json({ orgId, workspaces: wsCount, projects: projCount, artifacts: artCount, period: "30d" });
+    // Token/cost from ai_usage_logs (graceful fallback when DB not available in memory tests)
+    let tokens = 0; let cost = 0;
+    if (process.env.DATABASE_URL) {
+      try {
+        const { prisma } = await import("../db/client");
+        const agg = await (prisma as unknown as { aiUsageLog: { aggregate: (args: unknown) => Promise<{ _sum: { totalTokens: number | null; cost: number | null } }> } }).aiUsageLog.aggregate({ where: { orgId }, _sum: { totalTokens: true, cost: true } });
+        tokens = agg?._sum?.totalTokens ?? 0;
+        cost = agg?._sum?.cost ?? 0;
+      } catch { /* memory mode */ }
+    }
+    res.json({ orgId, workspaces: wsCount, projects: projCount, artifacts: artCount, tokens, cost, period: "30d" });
   }
 );
 
@@ -86,9 +95,13 @@ router.get(
     }
     const m1 = await getRepositories().governance.getAIModelConfig(orgId, "planning");
     const m2 = await getRepositories().governance.getAIModelConfig(orgId, "discovery");
-    const data = [m1, m2].filter(Boolean);
-    if (data.length === 0 && process.env.NODE_ENV === "test") {
-      data.push({ id: "mock-1", orgId, module: "planning", provider: "openai", model: "gpt-4o", temperature: 0.7, max_tokens: 1000, enabled: true, createdAt: new Date() });
+    const m3 = await getRepositories().governance.getAIModelConfig(orgId, "business_analysis");
+    const m4 = await getRepositories().governance.getAIModelConfig(orgId, "architecture");
+    let data = [m1, m2, m3, m4].filter(Boolean) as NonNullable<typeof m1>[];
+    // Seed a default planning config on first access so admin list is never empty (persisted, not fake)
+    if (data.length === 0) {
+      const seeded = await getRepositories().governance.setAIModelConfig(orgId, "planning", { provider: "openai", model: "gpt-4o", temperature: 0.7, max_tokens: 1000, enabled: true });
+      data = [seeded];
     }
     res.json({ data });
   }
@@ -121,6 +134,51 @@ router.patch(
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Model config not found" } });
       return;
     }
+  }
+);
+
+// GET /admin/orgs/:orgId/api-keys — list inbound API keys (FR-13.2)
+router.get(
+  "/admin/orgs/:orgId/api-keys",
+  authenticate,
+  authorize("org_admin"),
+  async (req: AuthedRequest, res: Response) => {
+    const orgId = String(req.params.orgId);
+    if (!isOrgAdmin(req, orgId)) { res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin" } }); return; }
+    const { listKeys } = await import("../middleware/apiKey");
+    res.json({ data: listKeys(orgId) });
+  }
+);
+
+// POST /admin/orgs/:orgId/api-keys — create inbound API key (raw returned once)
+router.post(
+  "/admin/orgs/:orgId/api-keys",
+  authenticate,
+  authorize("org_admin"),
+  async (req: AuthedRequest, res: Response) => {
+    const orgId = String(req.params.orgId);
+    if (!isOrgAdmin(req, orgId)) { res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin" } }); return; }
+    const scopes = Array.isArray((req.body as { scopes?: string[] })?.scopes) ? (req.body as { scopes: string[] }).scopes : ["artifacts:read"];
+    const { createManagedKey } = await import("../middleware/apiKey");
+    const { raw, record } = createManagedKey(orgId, scopes);
+    await getRepositories().governance.recordAuditLog(orgId, req.user!.userId, "api_key.create", "api_key", record.id, { scopes });
+    res.status(201).json({ id: record.id, orgId, scopes, raw, hint: `Use header X-API-Key: ${raw.slice(0, 12)}...` });
+  }
+);
+
+// DELETE /admin/orgs/:orgId/api-keys/:id
+router.delete(
+  "/admin/orgs/:orgId/api-keys/:id",
+  authenticate,
+  authorize("org_admin"),
+  async (req: AuthedRequest, res: Response) => {
+    const orgId = String(req.params.orgId);
+    const id = String(req.params.id);
+    if (!isOrgAdmin(req, orgId)) { res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin" } }); return; }
+    const { deleteKey } = await import("../middleware/apiKey");
+    if (!deleteKey(orgId, id)) { res.status(404).json({ error: { code: "NOT_FOUND", message: "API key not found" } }); return; }
+    await getRepositories().governance.recordAuditLog(orgId, req.user!.userId, "api_key.delete", "api_key", id, {});
+    res.status(204).send();
   }
 );
 

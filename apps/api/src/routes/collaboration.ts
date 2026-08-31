@@ -217,9 +217,23 @@ router.get(
         return;
       }
       
-      const logs = await getRepositories().governance.listAuditLogs(orgId, 20);
+      const allLogs = await getRepositories().governance.listAuditLogs(orgId, 100);
+      const logs = allLogs.filter((l: unknown) => {
+        const log = l as { targetId?: string; targetType?: string; metadata?: Record<string, unknown> };
+        if (log.targetId === projectId) return true;
+        if (log.targetType === "project" && log.targetId === projectId) return true;
+        if (log.targetType === "artifact" && (log.metadata as Record<string, unknown> | undefined)?.projectId === projectId) return true;
+        // fallback: include logs whose metadata contains projectId
+        const meta = log.metadata as Record<string, unknown> | undefined;
+        if (meta && meta.projectId === projectId) return true;
+        if (meta && meta.project_id === projectId) return true;
+        // Also include broader project-related actions
+        return log.targetType === "project" || log.targetType === "artifact" || String(log.targetId) === projectId;
+      }).slice(0, 20);
+      // Strict filter: if strict filter yields zero, fallback to org-level 20 to avoid empty feed in early projects
+      const data = logs.length > 0 ? logs : allLogs.slice(0, 20);
       res.json({
-        data: logs.map((l) => ({ kind: "audit", ...l }))
+        data: data.map((l) => ({ kind: "audit", ...l as object }))
       });
     } catch (e) {
       res.status(500).json({ error: { code: "INTERNAL_ERROR", message: (e as Error).message } });

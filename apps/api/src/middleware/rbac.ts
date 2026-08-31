@@ -26,6 +26,16 @@ export function authorize(...allowedRoles: UserRole[]) {
     }
     const role = req.user.role as UserRole;
     if (!allowedRoles.includes(role)) {
+      // Audit 403 (fire-and-forget, tenant-scoped)
+      void (async () => {
+        try {
+          const orgId = req.user?.orgId;
+          if (orgId) {
+            const { getRepositories } = await import("../repositories");
+            await getRepositories().governance.recordAuditLog(orgId, req.user!.userId, "authz.forbidden", "route", (req as unknown as { path: string }).path || req.url, { role, allowedRoles, path: req.path }).catch(() => undefined);
+          }
+        } catch { /* ignore */ }
+      })();
       res.status(403).json({
         error: {
           code: "FORBIDDEN",
@@ -63,4 +73,26 @@ export const RBAC = {
 /** Helper: check if role is allowed for a given action */
 export function isAllowed(role: UserRole, action: keyof typeof RBAC): boolean {
   return (RBAC[action] as readonly string[]).includes(role);
+}
+
+/**
+ * Project-level access helper — call after role check when a projectId is known.
+ * org_admin and workspace_admin bypass membership; other roles must be members.
+ * Returns true if allowed, false if membership required but missing.
+ * Caller should 403 with audit event if false.
+ */
+export async function hasProjectAccess(
+  orgId: string,
+  projectId: string,
+  userId: string,
+  role: UserRole,
+  getMembers: (orgId: string, projectId: string) => Promise<Array<{ userId: string }>>
+): Promise<boolean> {
+  if (role === "org_admin" || role === "workspace_admin") return true;
+  try {
+    const members = await getMembers(orgId, projectId);
+    return members.some((m) => m.userId === userId);
+  } catch {
+    return false;
+  }
 }

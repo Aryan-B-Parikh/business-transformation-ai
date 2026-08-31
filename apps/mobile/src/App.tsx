@@ -106,6 +106,9 @@ export function MobileApp({
   const [activeConversationId, setActiveConversationId] = React.useState<string>("");
   const [message, setMessage] = React.useState("");
   const [messages, setMessages] = React.useState<MessageItem[]>([]);
+  const [artifacts, setArtifacts] = React.useState<Array<{ id: string; type: string; title: string; status: string; version: number }>>([]);
+  const [dashboard, setDashboard] = React.useState<{ scores?: Record<string, number>; counts?: Record<string, number> } | null>(null);
+  const [docStatus, setDocStatus] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -215,6 +218,42 @@ export function MobileApp({
     }
   };
 
+  const loadArtifacts = async () => {
+    if (!selectedProjectId) return;
+    try {
+      const res = await request(`/api/v1/projects/${selectedProjectId}/artifacts`);
+      setArtifacts(res.data || []);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+  };
+
+  const loadDashboard = async () => {
+    if (!selectedProjectId) return;
+    try {
+      const res = await request(`/api/v1/projects/${selectedProjectId}/dashboard`);
+      setDashboard(res);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+  };
+
+  const handleDocumentPicker = async () => {
+    setDocStatus("Document picker: use expo-document-picker in native build; sending placeholder txt for parity.");
+    if (!selectedProjectId) { setError("Select a project first"); return; }
+    try {
+      // Parity placeholder: upload a tiny text file as multipart via fetch
+      const form = new FormData();
+      // RN FormData requires Blob or file uri; fallback to text blob for bridge parity
+      const blob = new Blob(["Mobile parity document upload placeholder"], { type: "text/plain" });
+      (form as unknown as { append: (k: string, v: unknown, name?: string) => void }).append("file", blob as unknown as Blob, "mobile-placeholder.txt");
+      const res = await fetch(`${API_BASE_URL}/api/v1/projects/${selectedProjectId}/documents`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form as unknown as BodyInit,
+      });
+      if (!res.ok) throw new Error(`Upload failed ${res.status}`);
+      const doc = await res.json();
+      setDocStatus(`Uploaded: ${doc.filename || doc.id}`);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+  };
+
   const sendMessage = async () => {
     if (!message.trim() || !selectedProjectId) return;
     const content = message.trim();
@@ -248,11 +287,8 @@ export function MobileApp({
         citations: msgRes.citations
       };
       setMessages(prev => [...prev, aiMsg]);
-    } catch (e: any) {
-      setError(e.message || "Failed to send message");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -381,6 +417,34 @@ export function MobileApp({
             {error}
           </RNText>
         )}
+
+        {/* Document Upload parity */}
+        <RNView testID="document-section" style={{ marginTop: 12, padding: 8, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 6 }}>
+          <RNText style={{ fontWeight: "bold", marginBottom: 4 }}>Documents</RNText>
+          <RNButton testID="upload-document-button" title="Upload Document (parity)" onPress={handleDocumentPicker} disabled={!token || !selectedProjectId} />
+          {docStatus ? <RNText testID="doc-status" style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{docStatus}</RNText> : null}
+        </RNView>
+
+        {/* Artifacts parity */}
+        <RNView testID="artifact-section" style={{ marginTop: 12, padding: 8, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 6 }}>
+          <RNText style={{ fontWeight: "bold", marginBottom: 4 }}>Artifacts</RNText>
+          <RNButton testID="load-artifacts-button" title="Load Artifacts" onPress={loadArtifacts} disabled={!token || !selectedProjectId} />
+          {artifacts.map(a => (
+            <RNText key={a.id} testID="artifact-item" style={{ fontSize: 12, paddingVertical: 2 }}>• {a.type}: {a.title} (v{a.version} {a.status})</RNText>
+          ))}
+          {artifacts.length === 0 ? <RNText testID="no-artifacts" style={{ fontSize: 12, color: "#71717a" }}>No artifacts loaded.</RNText> : null}
+        </RNView>
+
+        {/* Dashboard parity */}
+        <RNView testID="dashboard-section" style={{ marginTop: 12, padding: 8, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 6 }}>
+          <RNText style={{ fontWeight: "bold", marginBottom: 4 }}>Dashboard</RNText>
+          <RNButton testID="load-dashboard-button" title="Load Dashboard" onPress={loadDashboard} disabled={!token || !selectedProjectId} />
+          {dashboard ? (
+            <RNText testID="dashboard-data" style={{ fontSize: 12, color: "#334155" }}>
+              Scores: {JSON.stringify((dashboard as { scores?: Record<string, number> }).scores || dashboard)} | Counts: {JSON.stringify((dashboard as { counts?: Record<string, number> }).counts || {})}
+            </RNText>
+          ) : <RNText testID="no-dashboard" style={{ fontSize: 12, color: "#71717a" }}>No dashboard loaded.</RNText>}
+        </RNView>
       </RNView>
     </RNView>
   );

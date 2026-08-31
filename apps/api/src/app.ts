@@ -4,6 +4,7 @@ import express, { Request, Response, NextFunction } from "express";
 import helmet from "helmet";
 import { i18nMiddleware } from "./middleware/i18n";
 import { traceMiddleware } from "./middleware/trace";
+import { metricsMiddleware, renderMetrics } from "./utils/metrics";
 import { openApiSpec } from "./openapi";
 import adminRoutes from "./routes/admin";
 import aiRoutes from "./routes/ai";
@@ -30,17 +31,24 @@ export function createApp(): express.Express {
   app.use(express.urlencoded({ extended: true, limit: "1mb" }));
   app.use(cookieParser());
   app.use(traceMiddleware);
+  app.use(metricsMiddleware);
   app.use(i18nMiddleware as unknown as express.RequestHandler);
 
   app.get("/health", (_req, res) => res.json({ service: "core-api", version: "0.1.0", status: "ok" }));
   app.get("/healthz", (_req, res) => res.json({ status: "healthy", timestamp: new Date().toISOString() }));
   app.get("/readyz", async (_req, res) => {
     try {
-      res.json({ status: "ready", timestamp: new Date().toISOString() });
-    } catch {
-      res.status(503).json({ status: "not ready" });
+      // Basic readiness: ensure we can resolve repositories (DB reachable in postgres mode)
+      if (process.env.STORAGE_BACKEND === "postgres" && process.env.DATABASE_URL) {
+        const { prisma } = await import("./db/client");
+        await prisma.$queryRaw`SELECT 1`;
+      }
+      res.json({ status: "ready", timestamp: new Date().toISOString(), checks: { db: "ok", storage: process.env.STORAGE_BACKEND || "memory" } });
+    } catch (e) {
+      res.status(503).json({ status: "not ready", error: String((e as Error).message).slice(0, 200) });
     }
   });
+  app.get("/metrics", (_req, res) => res.type("text/plain").send(renderMetrics()));
   app.get("/api/v1/openapi.json", (_req, res) => res.json(openApiSpec));
   app.use(wellKnownRoutes);
 
@@ -58,7 +66,6 @@ export function createApp(): express.Express {
   v1.use(exportRoutes);
   v1.use(webhookRoutes);
   v1.use(adminRoutes);
-  app.use(aiRoutes);
   app.use("/api/v1", v1);
   app.use("/api/v1", (_req, res) => res.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } }));
 
