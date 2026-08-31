@@ -3,6 +3,8 @@ import request from "supertest";
 import { PrismaClient } from "@prisma/client";
 import { createApp } from "../src/app";
 import { signToken } from "../src/auth/jwt";
+import { initializeRepositories } from "../src/repositories";
+import { prisma as appPrisma } from "../src/db/client";
 
 describe("Golden Path E2E (Phase 29)", () => {
   const app = createApp();
@@ -22,6 +24,9 @@ describe("Golden Path E2E (Phase 29)", () => {
     }
 
     prisma = new PrismaClient({ datasources: { db: { url: adminUrl } } });
+    // Initialize application repositories for supertest to use postgres backend
+    initializeRepositories("postgres", appPrisma as any);
+    
     await prisma.organization.upsert({
       where: { id: orgId },
       update: {},
