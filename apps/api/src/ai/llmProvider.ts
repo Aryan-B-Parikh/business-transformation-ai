@@ -42,6 +42,30 @@ export function checkAndIncrementQuota(orgId?: string, orgPlan?: string, tokens:
   orgUsage.set(orgId, current + tokens);
 }
 
+import { prisma as appPrisma } from "../db/client";
+
+export async function recordDurableUsage(orgId: string, model: string, promptTokens: number, completionTokens: number, cost: number, requestId?: string): Promise<void> {
+  const totalTokens = promptTokens + completionTokens;
+  orgUsage.set(orgId, (orgUsage.get(orgId) || 0) + totalTokens);
+  if (process.env.DATABASE_URL && (appPrisma as any)?.aiUsageLog) {
+    try {
+      await (appPrisma as any).aiUsageLog.create({
+        data: {
+          orgId,
+          model,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          cost,
+          requestId
+        }
+      });
+    } catch {
+      // Non-blocking fallback
+    }
+  }
+}
+
 export async function generateStructuredCompletion<T>(systemInstruction: string, userPrompt: string, schema: z.ZodType<T>, config: LLMConfig = {}): Promise<T> {
   detectPromptInjection(userPrompt); detectSSRFInInput(userPrompt);
   checkAndIncrementQuota(config.orgId, config.orgPlan, 500);
@@ -57,7 +81,11 @@ export async function generateStructuredCompletion<T>(systemInstruction: string,
       const model = config.model || "gpt-4o-mini";
       const inputPrice = model.includes("gpt-4o-mini") ? 0.00015 : 0.005;
       const outputPrice = model.includes("gpt-4o-mini") ? 0.0006 : 0.015;
-      recordAITelemetry({ model, promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, latencyMs: Date.now() - start, cost: (promptTokens / 1000) * inputPrice + (completionTokens / 1000) * outputPrice });
+      const cost = (promptTokens / 1000) * inputPrice + (completionTokens / 1000) * outputPrice;
+      recordAITelemetry({ model, promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, latencyMs: Date.now() - start, cost });
+      if (config.orgId) {
+        void recordDurableUsage(config.orgId, model, promptTokens, completionTokens, cost);
+      }
       return value;
     } catch (err) {
       lastError = err;

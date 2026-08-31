@@ -242,6 +242,22 @@ CREATE TABLE "ai_model_configs" (
 );
 CREATE INDEX "ai_model_configs_org_id_idx" ON "ai_model_configs"("org_id");
 
+-- AI usage logs
+CREATE TABLE "ai_usage_logs" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "org_id" UUID NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+  "model" TEXT NOT NULL,
+  "pricing_version" TEXT NOT NULL DEFAULT '2026-01',
+  "prompt_tokens" INTEGER NOT NULL,
+  "completion_tokens" INTEGER NOT NULL,
+  "total_tokens" INTEGER NOT NULL,
+  "cost" DECIMAL(12,6) NOT NULL DEFAULT 0,
+  "request_id" TEXT,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX "ai_usage_logs_org_id_idx" ON "ai_usage_logs"("org_id");
+CREATE INDEX "ai_usage_logs_created_at_idx" ON "ai_usage_logs"("created_at");
+
 -- Notifications
 CREATE TABLE "notifications" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),

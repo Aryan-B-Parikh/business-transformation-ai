@@ -477,3 +477,20 @@ model Export {
   @@index([status])
   @@map("exports")
 }
+
+model AiUsageLog {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  model            String
+  pricingVersion   String   @default("2026-01") @map("pricing_version")
+  promptTokens     Int      @map("prompt_tokens")
+  completionTokens Int      @map("completion_tokens")
+  totalTokens      Int      @map("total_tokens")
+  cost             Float    @default(0)
+  requestId        String?  @map("request_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([orgId])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
+}

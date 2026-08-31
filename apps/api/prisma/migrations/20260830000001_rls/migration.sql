@@ -139,6 +139,14 @@ CREATE POLICY tenant_isolation ON "ai_model_configs"
   WITH CHECK ("org_id" = current_org_id());
 ALTER TABLE "ai_model_configs" FORCE ROW LEVEL SECURITY;
 
+-- AI usage logs
+ALTER TABLE "ai_usage_logs" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ai_usage_logs";
+CREATE POLICY tenant_isolation ON "ai_usage_logs"
+  USING ("org_id" = current_org_id())
+  WITH CHECK ("org_id" = current_org_id());
+ALTER TABLE "ai_usage_logs" FORCE ROW LEVEL SECURITY;
+
 -- Notifications
 ALTER TABLE "notifications" ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON "notifications";

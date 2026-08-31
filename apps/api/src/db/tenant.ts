@@ -82,5 +82,6 @@ export const RLS_TABLES = [
   "maturity_snapshots",
   "audit_logs",
   "ai_model_configs",
+  "ai_usage_logs",
   "notifications",
 ] as const;
