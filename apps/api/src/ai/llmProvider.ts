@@ -3,12 +3,48 @@ import { recordAITelemetry } from "../utils/telemetry";
 import { detectPromptInjection, detectSSRFInInput, AIValidationError } from "./guardrails";
 import { buildSystemPrompt } from "./prompts";
 
-export interface LLMConfig { model?: string; temperature?: number; maxTokens?: number; timeoutMs?: number; }
+export class QuotaExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "QuotaExceededError";
+  }
+}
+
+export interface LLMConfig {
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  orgId?: string;
+  orgPlan?: "trial" | "standard" | "enterprise";
+}
 export class LLMTimeoutError extends Error { constructor(message: string) { super(message); this.name = "LLMTimeoutError"; } }
 type Invocation = { content: string; promptTokens?: number; completionTokens?: number };
 
+const orgUsage = new Map<string, number>();
+
+export function getOrgUsage(orgId: string): number {
+  return orgUsage.get(orgId) || 0;
+}
+
+export function resetOrgUsage(): void {
+  orgUsage.clear();
+}
+
+export function checkAndIncrementQuota(orgId?: string, orgPlan?: string, tokens: number = 0): void {
+  if (!orgId) return;
+  const current = orgUsage.get(orgId) || 0;
+  const plan = orgPlan || "enterprise";
+  const limit = plan === "trial" ? 100_000 : plan === "standard" ? 1_000_000 : Infinity;
+  if (current + tokens > limit) {
+    throw new QuotaExceededError(`Organization quota exceeded for plan ${plan}. Current usage: ${current}, requested: ${tokens}, limit: ${limit}`);
+  }
+  orgUsage.set(orgId, current + tokens);
+}
+
 export async function generateStructuredCompletion<T>(systemInstruction: string, userPrompt: string, schema: z.ZodType<T>, config: LLMConfig = {}): Promise<T> {
   detectPromptInjection(userPrompt); detectSSRFInInput(userPrompt);
+  checkAndIncrementQuota(config.orgId, config.orgPlan, 500);
   const systemPrompt = buildSystemPrompt(systemInstruction, schema);
   const start = Date.now();
   let invocation = await Internal.invokeLLM(systemPrompt, userPrompt, config);

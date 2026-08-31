@@ -72,4 +72,44 @@ describe("Phase 7: AI / RAG Validation", () => {
       expect(() => detectSSRFInInput("My website is example.com")).not.toThrow();
     });
   });
+
+  describe("7.4 Sentence-Level Citation Grounding & Unsupported-Claim Detection", () => {
+    it("should accurately ground claims against supporting RAG chunks", async () => {
+      const { verifyClaimGrounding, detectUnsupportedClaims } = await import("../../src/services/rag");
+      const mockSources = [
+        {
+          id: "chunk-101",
+          documentId: "doc-1",
+          orgId: "org-1",
+          chunkText: "The legacy enterprise system uses Oracle 11g database and monolithic Java backend.",
+          pageRef: 1,
+          score: 0.95
+        },
+        {
+          id: "chunk-102",
+          documentId: "doc-1",
+          orgId: "org-1",
+          chunkText: "Authentication is handled through single sign-on with SAML 2.0 protocol.",
+          pageRef: 2,
+          score: 0.92
+        }
+      ];
+
+      const claims = [
+        "Legacy enterprise system uses Oracle 11g database.",
+        "Authentication uses SAML 2.0 protocol single sign-on.",
+        "The system has already migrated to AWS DynamoDB serverless architecture."
+      ];
+
+      const results = verifyClaimGrounding(claims, mockSources);
+      expect(results[0].isSupported).toBe(true);
+      expect(results[0].supportedByChunkId).toBe("chunk-101");
+      expect(results[1].isSupported).toBe(true);
+      expect(results[1].supportedByChunkId).toBe("chunk-102");
+      expect(results[2].isSupported).toBe(false);
+
+      const unsupported = detectUnsupportedClaims(claims, mockSources);
+      expect(unsupported).toEqual(["The system has already migrated to AWS DynamoDB serverless architecture."]);
+    });
+  });
 });

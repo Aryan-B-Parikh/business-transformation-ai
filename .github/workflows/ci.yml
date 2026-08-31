@@ -19,7 +19,7 @@ jobs:
       - run: npm run build
 
   test-unit:
-    name: Unit Tests
+    name: Unit & Monorepo Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,18 +27,7 @@ jobs:
         with: { node-version: 20 }
       - run: npm ci
       - run: npm run build
-      - run: cd apps/api && npx prisma generate && npx vitest run -c vitest.unit.config.ts
-
-  test-integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - run: npm ci
-      - run: npm run build
-      - run: cd apps/api && npx prisma generate && npx vitest run tests/integration/
+      - run: npm test
 
   test-e2e:
     name: E2E, RLS & Migration Verification

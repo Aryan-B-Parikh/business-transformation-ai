@@ -55,4 +55,20 @@ describe("Phase 10: LLM Provider Architecture", () => {
     // Network call should never be reached
     expect(invokeSpy).not.toHaveBeenCalled();
   });
+
+  it("should enforce organization plan quota limits", async () => {
+    const { checkAndIncrementQuota, QuotaExceededError, resetOrgUsage } = await import("../../src/ai/llmProvider");
+    resetOrgUsage();
+
+    // Trial tier: 100k limit
+    checkAndIncrementQuota("org-trial-1", "trial", 50000);
+    expect(() => {
+      checkAndIncrementQuota("org-trial-1", "trial", 60000);
+    }).toThrow(QuotaExceededError);
+
+    // Enterprise tier: unlimited
+    expect(() => {
+      checkAndIncrementQuota("org-ent-1", "enterprise", 50000000);
+    }).not.toThrow();
+  });
 });

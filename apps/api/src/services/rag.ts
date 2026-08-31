@@ -66,3 +66,51 @@ export function ragTenantIsolationCheck(allChunks: DocumentChunk[], queryOrg: st
   // Returns true if no chunk from other org leaked
   return allChunks.every((c) => c.orgId === queryOrg);
 }
+
+export interface ClaimVerificationResult {
+  claim: string;
+  isSupported: boolean;
+  supportedByChunkId?: string;
+  confidenceScore: number;
+}
+
+/**
+ * Sentence-level claim grounding & unsupported-claim detection.
+ * Evaluates whether factual assertions in generated transformation outputs
+ * are supported by retrieved RAG document chunks.
+ */
+export function verifyClaimGrounding(claims: string[], sources: RagChunkResult[]): ClaimVerificationResult[] {
+  if (!claims.length) return [];
+  if (!sources.length) {
+    return claims.map(c => ({ claim: c, isSupported: false, confidenceScore: 0 }));
+  }
+
+  return claims.map(claim => {
+    const claimWords = claim.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    let bestMatch: RagChunkResult | undefined;
+    let highestScore = 0;
+
+    for (const source of sources) {
+      const sourceText = source.chunkText.toLowerCase();
+      const matchCount = claimWords.filter(w => sourceText.includes(w)).length;
+      const score = claimWords.length > 0 ? matchCount / claimWords.length : 0;
+      if (score > highestScore) {
+        highestScore = score;
+        bestMatch = source;
+      }
+    }
+
+    const isSupported = highestScore >= 0.4;
+    return {
+      claim,
+      isSupported,
+      supportedByChunkId: isSupported ? bestMatch?.id : undefined,
+      confidenceScore: highestScore
+    };
+  });
+}
+
+export function detectUnsupportedClaims(claims: string[], sources: RagChunkResult[]): string[] {
+  const verified = verifyClaimGrounding(claims, sources);
+  return verified.filter(v => !v.isSupported).map(v => v.claim);
+}
