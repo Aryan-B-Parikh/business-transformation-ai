@@ -89,6 +89,6 @@ describe("Golden Path E2E (Phase 29)", () => {
       .get(`/api/v1/projects/${projectId}/dashboard`)
       .set("Authorization", `Bearer ${token}`);
     expect(dashRes.status).toBe(200);
-    expect(dashRes.body.digital_maturity).toBeDefined();
+    expect(dashRes.body.model.digital_maturity).toBeDefined();
   });
 });
