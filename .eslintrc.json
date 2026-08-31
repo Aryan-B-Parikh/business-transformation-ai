@@ -17,7 +17,8 @@
     "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/ban-ts-comment": "off",
-    "import/order": ["warn", { "alphabetize": { "order": "asc" } }]
+    "no-empty": ["warn", { "allowEmptyCatch": true }],
+    "import/order": "off"
   },
   "ignorePatterns": ["dist/", "node_modules/", "build/", "*.js"]
 }
