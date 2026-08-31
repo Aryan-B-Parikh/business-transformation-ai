@@ -6,8 +6,8 @@ import { authorize } from "../middleware/rbac";
 
 const router = Router();
 const stages = ["idea","discovery","business_analysis","solution_design","architecture","process_design","ux_design","data_design","planning","review","approved","implementation"] as const;
-const transitionSchema = z.object({ stage: z.enum(stages), status: z.enum(["pending","in_progress","completed","blocked"]), version: z.number().int().positive().optional(), reason: z.string().max(2000).optional() });
-const rollbackSchema = z.object({ stage: z.enum(stages), version: z.number().int().positive().optional(), reason: z.string().min(1).max(2000) });
+const transitionSchema = z.object({ stage: z.enum(stages), status: z.enum(["pending","in_progress","completed","blocked"]), version: z.number().int().positive().optional(), reason: z.string().max(2000).optional() }).refine(data => data.stage === "idea" || data.version !== undefined, { message: "version is required for all transitions except initialization at idea", path: ["version"] });
+const rollbackSchema = z.object({ stage: z.enum(stages), version: z.number().int().positive(), reason: z.string().min(1).max(2000) });
 
 router.get("/projects/:id/journey", authenticate, authorize("org_admin","workspace_admin","contributor","reviewer","viewer"), async (req: AuthedRequest,res:Response) => {
   const orgId=req.user!.orgId, projectId=String(req.params.id);

@@ -20,6 +20,7 @@ export interface PlannerRequest {
   projectId: string;
   orgId: string;
   createdBy: string;
+  lang?: string;
   params?: { horizonMonths?: number };
 }
 

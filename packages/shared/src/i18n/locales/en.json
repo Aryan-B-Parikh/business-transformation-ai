@@ -1,0 +1,9 @@
+{
+  "common": {
+    "welcome": "Welcome to Business Transformation AI",
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "settings": "Settings",
+    "language": "Language"
+  }
+}

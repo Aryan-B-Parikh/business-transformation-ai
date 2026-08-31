@@ -1,0 +1,9 @@
+{
+  "common": {
+    "welcome": "Bienvenido a Business Transformation AI",
+    "dashboard": "Tablero",
+    "projects": "Proyectos",
+    "settings": "Ajustes",
+    "language": "Idioma"
+  }
+}

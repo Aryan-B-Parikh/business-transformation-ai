@@ -1,7 +1,13 @@
 import { API_BASE } from "@bta/shared";
 export const API_BASE_URL = API_BASE;
 export interface FetchOptions extends RequestInit { token?: string; }
-export async function apiFetch(path: string, opts: FetchOptions = {}): Promise<Response> { const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) }; if (opts.token) headers.Authorization = `Bearer ${opts.token}`; if (opts.body && !(opts.body instanceof FormData)) headers["Content-Type"] = "application/json"; return fetch(`${API_BASE_URL}${path}`, { ...opts, headers }); }
+export async function apiFetch(path: string, opts: FetchOptions = {}): Promise<Response> {
+  const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
+  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  if (opts.body && !(opts.body instanceof FormData)) headers["Content-Type"] = "application/json";
+  const url = API_BASE_URL.startsWith("http") ? `${API_BASE_URL}${path}` : `http://localhost:3000${API_BASE_URL}${path}`;
+  return fetch(url, { ...opts, headers });
+}
 export async function login(email: string, password: string, orgId?: string): Promise<{ token: string; user: unknown }> { const res = await apiFetch("/auth/login", { method: "POST", body: JSON.stringify({ email, password, ...(orgId ? { orgId } : {}) }) }); if (!res.ok) throw new Error(`Login failed ${res.status}`); return res.json(); }
 export async function listWorkspaces(token: string): Promise<any> { const res = await apiFetch("/workspaces", { token }); if (!res.ok) throw new Error(`Workspaces failed ${res.status}`); return res.json(); }
 export async function uploadDocument(projectId: string, file: File, token: string): Promise<unknown> { const form = new FormData(); form.append("file", file); const res = await apiFetch(`/projects/${projectId}/documents?sync=true`, { method: "POST", body: form, token }); if (!res.ok) throw new Error(`Upload failed ${res.status}`); return res.json(); }

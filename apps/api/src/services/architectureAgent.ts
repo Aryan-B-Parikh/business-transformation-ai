@@ -24,6 +24,7 @@ export interface ArchitectureRequest {
   params?: { cloud_preference?: string; compliance?: string[] };
   conversationHistory?: { role: string; content: string }[];
   createdBy: string;
+  lang?: string;
 }
 
 export async function generateArchitecture(req: ArchitectureRequest): Promise<{ artifactId: string; content: ArchitectureContent }> {

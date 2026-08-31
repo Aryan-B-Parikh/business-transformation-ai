@@ -108,10 +108,29 @@ export const TRANSLATIONS: Record<string, Record<SupportedLanguage, string>> = {
   },
 };
 
+import i18next from "i18next";
+import { initReactI18next } from "react-i18next";
+
+const resources: any = {};
+for (const lang of SUPPORTED_LANGUAGES) {
+  resources[lang] = { translation: {} };
+}
+for (const [key, langs] of Object.entries(TRANSLATIONS)) {
+  for (const [lang, text] of Object.entries(langs)) {
+    if (resources[lang]) resources[lang].translation[key] = text;
+  }
+}
+
+i18next.use(initReactI18next).init({
+  resources,
+  fallbackLng: "en",
+  interpolation: { escapeValue: false }
+});
+
+export const i18n = i18next;
+
 export function t(key: string, lang: SupportedLanguage = "en"): string {
-  const entry = TRANSLATIONS[key];
-  if (!entry) return key;
-  return entry[lang] || entry.en || key;
+  return i18next.t(key, { lng: lang }) as string;
 }
 
 export function isSupportedLanguage(lang: string): lang is SupportedLanguage {

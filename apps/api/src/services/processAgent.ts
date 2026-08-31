@@ -19,6 +19,7 @@ export interface ProcessRequest {
   projectId: string;
   orgId: string;
   createdBy: string;
+  lang?: string;
   params?: { processName?: string };
 }
 

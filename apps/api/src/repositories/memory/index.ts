@@ -325,7 +325,7 @@ export class MemoryDocumentRepository implements IDocumentAggregateRepository {
       orgId: orgId,
       projectId: projectId,
       filename: data.filename,
-      doc_type: data.docType,
+      type: data.docType,
       file_size: data.fileSize,
       parsedStatus: "pending",
       storage_key: data.storageKey ?? null,
@@ -392,6 +392,13 @@ export class MemoryDocumentRepository implements IDocumentAggregateRepository {
     if (!doc || doc.orgId !== orgId) throw new Error("Not found");
     this.documents.delete(id);
     this.chunks.delete(id);
+  }
+
+  async getChunkCount(orgId: string, documentId: string): Promise<number> {
+    requireOrgId(orgId);
+    const doc = this.documents.get(documentId);
+    if (!doc || doc.orgId !== orgId) throw new Error("Not found");
+    return this.chunks.get(documentId)?.length || 0;
   }
 }
 

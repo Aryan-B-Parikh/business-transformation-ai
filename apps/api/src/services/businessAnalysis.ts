@@ -45,6 +45,7 @@ export interface BusinessAnalysisRequest {
   conversationHistory?: { role: string; content: string }[];
   documentExcerpts?: string[];
   createdBy: string;
+  lang?: string;
 }
 
 export async function generateBusinessAnalysis(req: BusinessAnalysisRequest): Promise<{ artifactId: string; content: BusinessAnalysisContent }> {

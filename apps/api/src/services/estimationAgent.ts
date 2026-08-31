@@ -21,6 +21,7 @@ export interface EstimationRequest {
   projectId: string;
   orgId: string;
   createdBy: string;
+  lang?: string;
   scope?: string[]; // e.g., ["API Gateway", "Migration"]
   artifactId?: string; // parent roadmap artifact
 }

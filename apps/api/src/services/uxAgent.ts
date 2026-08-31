@@ -18,6 +18,7 @@ export interface UxRequest {
   projectId: string;
   orgId: string;
   createdBy: string;
+  lang?: string;
   params?: { appType?: string };
 }
 

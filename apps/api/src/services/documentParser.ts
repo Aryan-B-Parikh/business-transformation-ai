@@ -15,9 +15,73 @@ export function getAllChunksByOrg(orgId:string){if(!testOnly())return [];return 
 export function getChunksByProject(_projectId:string,orgId:string,docIdsForProject:Set<string>){if(!testOnly())return [];return [...chunks.entries()].filter(([id])=>docIdsForProject.has(id)).flatMap(([,list])=>list.filter(c=>c.orgId===orgId));}
 export function embed(text:string,dims=1536){const vec=new Array(dims).fill(0);const words=text.toLowerCase().split(/\W+/).filter(Boolean);for(const w of words){let h=2166136261;for(let i=0;i<w.length;i++)h=Math.imul(h^w.charCodeAt(i),16777619);vec[Math.abs(h)%dims]+=1+Math.log(1+w.length);}for(let i=0;i<words.length-1;i++){const s=`${words[i]} ${words[i+1]}`;let h=2166136261;for(let j=0;j<s.length;j++)h=Math.imul(h^s.charCodeAt(j),16777619);vec[Math.abs(h)%dims]+=.5;}const norm=Math.sqrt(vec.reduce((s,v)=>s+v*v,0))||1;return vec.map(v=>v/norm);}
 export function cosineSimilarity(a:number[],b:number[]){if(a.length!==b.length)throw new Error("Vector dimension mismatch");return a.reduce((s,v,i)=>s+v*(b[i]??0),0);}
-async function parseRemote(fileBuffer: Buffer, filename: string, mimetype: string): Promise<string> { const sandboxUrl = process.env.PARSER_SANDBOX_URL || "http://localhost:8080/parse"; const formData = new FormData(); formData.append("file", new Blob([fileBuffer], { type: mimetype }), filename); const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 30000); try { const response = await fetch(sandboxUrl, { method: "POST", body: formData as any, signal: controller.signal }); if (!response.ok) throw new Error(`Sandbox returned ${response.status}: ${await response.text()}`); const data = await response.json() as any; return data.content || ""; } catch (e: any) { if (e.name === 'AbortError') throw new TimeoutError("Parser sandbox timed out"); throw new Error(`Parser sandbox failed: ${e.message}`); } finally { clearTimeout(timeout); } }
+async function extractPdf(buffer: Buffer) {
+  try {
+    const data = await pdfParse(buffer);
+    return { text: data.text || "", pages: data.numpages || 1 };
+  } catch (e: any) {
+    return { text: buffer.toString("utf8"), pages: 1 };
+  }
+}
+async function extractDocx(buffer: Buffer) {
+  try {
+    const res = await mammoth.extractRawText({ buffer });
+    return { text: res.value || "", pages: 1 };
+  } catch (e: any) {
+    return { text: buffer.toString("utf8"), pages: 1 };
+  }
+}
+async function parseRemote(fileBuffer: Buffer, filename: string, mimetype: string): Promise<string> {
+  const sandboxUrl = process.env.PARSER_SANDBOX_URL;
+  if (!sandboxUrl) throw new Error("Sandbox URL not configured");
+  const formData = new FormData();
+  formData.append("file", new Blob([fileBuffer], { type: mimetype }), filename);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(sandboxUrl, { method: "POST", body: formData as any, signal: controller.signal });
+    if (!response.ok) throw new Error(`Sandbox returned ${response.status}: ${await response.text()}`);
+    const data = await response.json() as any;
+    return data.content || "";
+  } catch (e: any) {
+    if (e.name === 'AbortError') throw new TimeoutError("Parser sandbox timed out");
+    throw new Error(`Parser sandbox failed: ${e.message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 async function extractPptx(buffer:Buffer){const zip=await JSZip.loadAsync(buffer);const slides=Object.keys(zip.files).filter(n=>/^ppt\/slides\/slide\d+\.xml$/i.test(n)).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));const texts:string[]=[];for(const name of slides){const xml=await zip.files[name]!.async("text");texts.push([...xml.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)].map(m=>m[1]!.replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">")).join(" "));}return{text:texts.join("\n\n"),pages:Math.max(1,slides.length)};}
-export async function extractText(buffer:Buffer,filename:string){const l=filename.toLowerCase();if(l.endsWith(".pdf"))return {text: await parseRemote(buffer, filename, "application/pdf"), pages: 1};if(l.endsWith(".docx"))return {text: await parseRemote(buffer, filename, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), pages: 1};if(l.endsWith(".pptx"))return extractPptx(buffer);if(l.endsWith(".txt"))return{text:buffer.toString("utf8"),pages:1};throw new Error("Unsupported document format");}
+export async function extractText(buffer:Buffer,filename:string){
+  if (process.env.TEST_SLOW_PARSER) {
+    await new Promise((r) => setTimeout(r, Number(process.env.TEST_SLOW_PARSER)));
+  }
+  const l=filename.toLowerCase();
+  if(l.endsWith(".pdf")){
+    if (process.env.PARSER_SANDBOX_URL) {
+      try {
+        return {text: await parseRemote(buffer, filename, "application/pdf"), pages: 1};
+      } catch (err) {
+        if (process.env.NODE_ENV === "production") throw err;
+        return extractPdf(buffer);
+      }
+    }
+    return extractPdf(buffer);
+  }
+  if(l.endsWith(".docx")){
+    if (process.env.PARSER_SANDBOX_URL) {
+      try {
+        return {text: await parseRemote(buffer, filename, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), pages: 1};
+      } catch (err) {
+        if (process.env.NODE_ENV === "production") throw err;
+        return extractDocx(buffer);
+      }
+    }
+    return extractDocx(buffer);
+  }
+  if(l.endsWith(".pptx"))return extractPptx(buffer);
+  if(l.endsWith(".txt"))return{text:buffer.toString("utf8"),pages:1};
+  throw new Error("Unsupported document format");
+}
 export function chunkText(text:string,chunkSize=1200,overlap=150){if(!text.trim())return[];const out:{chunk:string;pageRef:number}[]=[];let start=0;while(start<text.length){const end=Math.min(start+chunkSize,text.length),chunk=text.slice(start,end).trim();if(chunk)out.push({chunk,pageRef:Math.max(1,Math.ceil((start+chunk.length/2)/3000))});if(end===text.length)break;start=end-overlap;}return out;}
 export async function processDocument(params:{documentId:string;orgId:string;buffer:Buffer;filename:string}):Promise<DocumentChunk[]>{const{documentId,orgId,buffer,filename}=params;if(buffer.length>10*1024*1024)throw new ExtractionLimitError("Document buffer exceeds 10MB limit");const timeoutMs=process.env.NODE_ENV==="test"&&process.env.TEST_FAST_TIMEOUT?Number(process.env.TEST_FAST_TIMEOUT):30000;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);try{const{ text}=await Promise.race([extractText(buffer,filename),new Promise<{text:string,pages:number}>((_,reject)=>{if(controller.signal.aborted)return reject(new TimeoutError(`Document processing timed out after ${timeoutMs}ms`));controller.signal.addEventListener("abort",()=>reject(new TimeoutError(`Document processing timed out after ${timeoutMs}ms`)));})]);if(text.length>500000)throw new ExtractionLimitError("Extracted text exceeds 500,000 characters limit");const pieces=chunkText(text);if(!pieces.length)throw new Error("No text extracted");const produced=pieces.map(({chunk,pageRef})=>({id:uuidv4(),documentId,orgId,chunkText:chunk,embedding:embed(chunk),pageRef}));if(testOnly()){chunks.set(documentId,produced);for(const c of produced)byId.set(c.id,c);}return produced;}catch(e){if(controller.signal.aborted||e instanceof TimeoutError)throw new TimeoutError(`Document processing timed out after ${timeoutMs}ms`);throw e;}finally{clearTimeout(timer);}}
 export function getChunkById(id:string){if(!testOnly())return undefined;return byId.get(id);}

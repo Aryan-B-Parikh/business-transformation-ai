@@ -18,6 +18,7 @@ export interface DataModelingRequest {
   projectId: string;
   orgId: string;
   createdBy: string;
+  lang?: string;
   params?: { domain?: string };
 }
 
