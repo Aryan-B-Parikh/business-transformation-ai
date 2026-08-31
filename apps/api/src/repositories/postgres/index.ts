@@ -230,6 +230,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
           content: data.content,
           status: data.status ?? "draft",
           version: 1,
+          generatedBy: "ai",
           createdBy: data.createdBy,
         },
       });
