@@ -57,6 +57,7 @@ describe("Golden Path E2E (Phase 29)", () => {
       .post("/api/v1/workspaces")
       .set("Authorization", `Bearer ${token}`)
       .send({ name: "E2E Workspace" });
+    if (wsRes.status !== 201) { console.error("Workspace creation failed:", wsRes.body); }
     expect(wsRes.status).toBe(201);
     const workspaceId = wsRes.body.id;
 
