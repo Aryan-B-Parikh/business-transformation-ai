@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { PrismaClient } from "@prisma/client";
 import { createApp } from "../src/app";
-import { generateToken } from "../src/auth/jwt";
+import { signToken } from "../src/auth/jwt";
 
 describe("Golden Path E2E (Phase 29)", () => {
   const app = createApp();
@@ -46,7 +46,7 @@ describe("Golden Path E2E (Phase 29)", () => {
   });
 
   it("should execute the full golden path: Org -> Workspace -> Project -> Document -> Chat -> Artifact -> Dashboard", async () => {
-    const token = generateToken({
+    const token = signToken({
       userId,
       orgId,
       role: "org_admin",
