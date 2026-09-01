@@ -36,6 +36,19 @@ services:
     networks:
       - default
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    networks:
+      - default
+
   minio-create-bucket:
     image: minio/mc:latest
     restart: "no"
@@ -44,6 +57,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     entrypoint:
       - /bin/sh
       - -c
@@ -51,7 +66,9 @@ services:
         set -eu
         /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin
         /usr/bin/mc mb --ignore-existing myminio/bta-storage-test
+        /usr/bin/mc mb --ignore-existing myminio/bta-prod
         /usr/bin/mc anonymous set none myminio/bta-storage-test
+        /usr/bin/mc anonymous set none myminio/bta-prod
         /usr/bin/mc stat myminio/bta-storage-test
     networks:
       - default
@@ -101,10 +118,15 @@ services:
       - PARSER_SANDBOX_URL=http://parser-sandbox:8080/parse
       - PORT=3000
       - NODE_ENV=test
+      - REDIS_URL=redis://redis:6379
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GOOGLE_API_KEY=${GEMINI_API_KEY:-}
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-k5GJFEmfJ46YPTAcccdHMhSSqtGDIDJcf9M6wQtwICxJDNGW}
+      - JWT_ISSUER=${JWT_ISSUER:-bta-api}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-bta-client}
+      - WEBHOOK_SIGNING_SECRET=${WEBHOOK_SIGNING_SECRET:-a6867e27518510a4bdb45bfdec47a23d491e9ee635a002c8}
     ports:
       - "3000:3000"
     depends_on:
@@ -141,10 +163,15 @@ services:
       - S3_SECRET_ACCESS_KEY=minioadmin
       - S3_FORCE_PATH_STYLE=true
       - NODE_ENV=test
+      - REDIS_URL=redis://redis:6379
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GOOGLE_API_KEY=${GEMINI_API_KEY:-}
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-k5GJFEmfJ46YPTAcccdHMhSSqtGDIDJcf9M6wQtwICxJDNGW}
+      - JWT_ISSUER=${JWT_ISSUER:-bta-api}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-bta-client}
+      - WEBHOOK_SIGNING_SECRET=${WEBHOOK_SIGNING_SECRET:-a6867e27518510a4bdb45bfdec47a23d491e9ee635a002c8}
     depends_on:
       postgres:
         condition: service_healthy
