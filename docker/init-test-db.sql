@@ -1,20 +1,17 @@
--- Create the restricted application role for the application to use — least privilege, no superuser, no bypassrls
+-- Restricted application role for runtime tests.
+-- Migrations are executed separately with the postgres administrator.
 CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 
--- Revoke all by default to be safe
 REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
-
--- Grant connect and schema usage
 GRANT CONNECT ON DATABASE bta_test TO bta_app;
-GRANT USAGE, CREATE ON SCHEMA public TO bta_app;
+GRANT USAGE ON SCHEMA public TO bta_app;
 
--- Wait, Prisma migrate deploy requires schema modification permissions.
--- We will run migrations as "postgres" (superuser).
--- But the application will connect as "bta_app".
--- We need to ensure that "bta_app" can access all tables created in the public schema by "postgres".
+-- Migrations run as postgres, so explicitly grant runtime DML privileges after
+-- migration in CI. These defaults also cover objects created by the postgres
+-- role in environments that use this init script before migration.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bta_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bta_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
-
--- NOTE: "bta_app" is intentionally NOT a superuser and does NOT have BYPASSRLS.
--- This guarantees that Row-Level Security policies will be enforced against it.
+-- Deliberately no SUPERUSER, CREATEDB, CREATEROLE, or BYPASSRLS.
