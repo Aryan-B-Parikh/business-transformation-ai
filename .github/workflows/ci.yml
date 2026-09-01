@@ -102,7 +102,10 @@ jobs:
           SQL
       - name: Create MinIO bucket
         run: |
-          docker run --rm --network host minio/mc:latest sh -c 'mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb --ignore-existing local/bta-storage-test && mc anonymous set none local/bta-storage-test'
+          set -euo pipefail
+          docker run --rm --network host minio/mc:latest alias set local http://localhost:9000 minioadmin minioadmin
+          docker run --rm --network host minio/mc:latest mb --ignore-existing local/bta-storage-test
+          docker run --rm --network host minio/mc:latest anonymous set none local/bta-storage-test
       - name: Integration, PRD and RLS tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
