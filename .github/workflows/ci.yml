@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -22,50 +22,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Repair known source blockers
-        shell: python
-        run: |
-          from pathlib import Path
-
-          server = Path("apps/ai-orchestrator/src/server.ts")
-          text = server.read_text()
-          if 'import { z } from "zod";' not in text:
-              text = text.replace('import { generateStructuredCompletion } from "../api/src/ai/llmProvider";\n', 'import { generateStructuredCompletion } from "../api/src/ai/llmProvider";\nimport { z } from "zod";\n')
-          text = text.replace('require("zod").z.object({}).passthrough()', 'z.object({}).passthrough()')
-          server.write_text(text)
-
-          artifacts = Path("apps/api/src/routes/artifacts.ts")
-          text = artifacts.read_text()
-          text = text.replace(
-              '    while (true) {\n      const cur = all.find((x) => x.id === rootId);\n      if (cur?.parent_id) rootId = cur.parent_id;\n      else break;\n    }',
-              '    let hasParent = true;\n    while (hasParent) {\n      const cur = all.find((x) => x.id === rootId);\n      if (cur?.parent_id) {\n        rootId = cur.parent_id;\n      } else {\n        hasParent = false;\n      }\n    }'
-          )
-          artifacts.write_text(text)
-
-          golden = Path("apps/api/tests/goldenPath.e2e.test.ts")
-          text = golden.read_text()
-          text = text.replace('    }\n  }, 60000);\n\n  it("4. Conversation', '  }, 60000);\n\n  it("4. Conversation', 1)
-          golden.write_text(text)
-
-      - name: Persist source repairs on main
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/ai-orchestrator/src/server.ts apps/api/src/routes/artifacts.ts apps/api/tests/goldenPath.e2e.test.ts
-          git commit -m "fix: repair lint blockers"
-          git push origin HEAD:main
-
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run build
-      - name: Typecheck
-        run: npx tsc --noEmit --project tsconfig.base.json && npx tsc --noEmit --project apps/api/tsconfig.json && npx tsc --noEmit --project apps/web/tsconfig.json && npx tsc --noEmit --project apps/mobile/tsconfig.json
+      - name: Typecheck project graph
+        run: npx tsc --build tsconfig.json --force --pretty false
 
   test-unit:
     name: Gate 2a — Unit Tests
@@ -114,11 +75,11 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Run migrations
+      - name: Migrate database
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
-      - name: Configure restricted application role after migrations
+      - name: Configure restricted application role
         env:
           PGPASSWORD: postgres
         run: |
@@ -139,15 +100,11 @@ jobs:
           GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;
           GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;
           SQL
-          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname='bta_app' AND rolsuper=false AND rolbypassrls=false;" | grep bta_app
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "SELECT rolname FROM pg_roles WHERE rolname='bta_app' AND rolsuper=false AND rolbypassrls=false;" | grep bta_app
       - name: Create MinIO bucket
         run: |
-          docker run --rm --network host minio/mc:latest sh -c '
-            mc alias set local http://localhost:9000 minioadmin minioadmin &&
-            mc mb --ignore-existing local/bta-storage-test &&
-            mc anonymous set none local/bta-storage-test
-          '
-      - name: Run integration, PRD and RLS tests
+          docker run --rm --network host minio/mc:latest sh -c 'mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb --ignore-existing local/bta-storage-test && mc anonymous set none local/bta-storage-test'
+      - name: Integration, PRD and RLS tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
@@ -173,7 +130,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Dependency Security Audit
+      - name: Dependency security audit
         run: npm audit --audit-level=high
       - name: Dependency review
         if: github.event_name == 'pull_request'
@@ -195,23 +152,23 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Start Infrastructure
+      - name: Start test infrastructure
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
         run: docker compose -f docker-compose.test.yml up -d --wait
-      - name: Verify Migrations
+      - name: Verify migrations
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
-      - name: Re-apply restricted role grants after migrations
+      - name: Re-apply runtime grants
         env:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
-      - name: Run E2E and Golden Path
+      - name: Run E2E suites
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
@@ -231,7 +188,7 @@ jobs:
           cd apps/api
           npx vitest run tests/e2e/
           npx vitest run tests/goldenPath.e2e.test.ts
-      - name: Teardown Infrastructure
+      - name: Teardown infrastructure
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
 
@@ -282,7 +239,7 @@ jobs:
           GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;
           GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;
           SQL
-      - name: Run load and DR tests
+      - name: Load and DR tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
@@ -301,14 +258,12 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Start Live Infrastructure
+      - name: Start live infrastructure
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
-        run: |
-          docker compose -f docker-compose.test.yml up -d --wait
-          docker compose -f docker-compose.test.yml ps -a
-      - name: Verify Migrations and Runtime Role
+        run: docker compose -f docker-compose.test.yml up -d --wait
+      - name: Verify migrations and restricted role
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
           PGPASSWORD: postgres
