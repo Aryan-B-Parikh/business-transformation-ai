@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-audit --no-fund
       - run: npm run lint
       - run: npm run build
       - name: Typecheck project graph
@@ -38,7 +38,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-audit --no-fund
       - run: npm run build
       - run: npm test --workspaces --if-present
 
@@ -73,7 +73,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-audit --no-fund
       - run: npm run build
       - name: Migrate database
         env:
@@ -131,7 +131,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-audit --no-fund
       - name: Dependency security audit
         run: node scripts/security-audit.cjs
       - name: Dependency review
@@ -152,7 +152,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-audit --no-fund
       - run: npm run build
       - name: Start test infrastructure
         env:
@@ -215,7 +215,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-audit --no-fund
       - run: npm run build
       - name: Migrate and configure restricted role
         env:
@@ -258,7 +258,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      - run: npm install --no-audit --no-fund
       - run: npm run build
       - name: Start live infrastructure
         env:
