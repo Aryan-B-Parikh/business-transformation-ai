@@ -104,10 +104,11 @@ function getGeminiKey(): string | undefined {
   return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 }
 function normalizeGeminiModel(model: string): string {
-  if (!model || model.includes("gpt")) return "gemini-1.5-flash";
-  if (model === "gemini-3.7-flash" || model === "gemini-3.7" || model.includes("3.7")) return "gemini-1.5-flash";
+  if (!model || model.includes("gpt")) return "gemini-3.6-flash";
+  if (model === "gemini-3.7-flash" || model === "gemini-3.7" || model.includes("3.7")) return "gemini-3.6-flash";
+  if (model === "gemini-2.5-flash" || model.includes("2.5")) return "gemini-3.6-flash";
   if (model.startsWith("gemini-")) return model;
-  return "gemini-1.5-flash";
+  return "gemini-3.6-flash";
 }
 async function invokeGemini(systemPrompt: string, userPrompt: string, config: LLMConfig): Promise<Invocation> {
   const apiKey = getGeminiKey()!;
@@ -115,13 +116,8 @@ async function invokeGemini(systemPrompt: string, userPrompt: string, config: LL
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 30000);
   try {
-    const useBearer = apiKey.startsWith("AQ.") || apiKey.startsWith("ya29.");
-    const url = useBearer
-      ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-      : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (useBearer) headers["Authorization"] = `Bearer ${apiKey}`;
-    else headers["x-goog-api-key"] = apiKey;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const headers: Record<string, string> = { "Content-Type": "application/json", "x-goog-api-key": apiKey };
     const combinedPrompt = `${systemPrompt}\n\n---\nUser:\n${userPrompt}\n\nReturn ONLY valid JSON per schema, no markdown.`;
     const response = await fetch(url, {
       method: "POST",
