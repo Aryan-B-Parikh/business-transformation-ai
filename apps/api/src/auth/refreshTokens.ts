@@ -8,8 +8,13 @@ export interface RefreshToken {
   revokedAt: Date | null;
 }
 
-// In-memory store for tests
-const store = new Map<string, RefreshToken>();
+// In-memory store for tests — use globalThis to survive vitest module re-evaluation
+declare global {
+  // eslint-disable-next-line no-var
+  var __bta_refresh_tokens: Map<string, RefreshToken> | undefined;
+}
+const store: Map<string, RefreshToken> = globalThis.__bta_refresh_tokens ?? new Map<string, RefreshToken>();
+globalThis.__bta_refresh_tokens = store;
 
 export function createRefreshToken(userId: string, expiresInDays = 7): { token: string; entity: RefreshToken } {
   const token = crypto.randomBytes(32).toString("hex");

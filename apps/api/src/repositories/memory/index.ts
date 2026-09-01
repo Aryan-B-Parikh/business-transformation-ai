@@ -156,6 +156,7 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
       content: ArtifactContent;
       status?: ArtifactStatus;
       createdBy?: string;
+      generatedBy?: "ai" | "user" | "hybrid";
     }
   ): Promise<ArtifactEntity> {
     requireOrgId(orgId);
@@ -169,6 +170,7 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
       status: data.status ?? "draft",
       version: 1,
       createdBy: data.createdBy ?? null,
+      generatedBy: data.generatedBy ?? "user",
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -219,6 +221,7 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
       parent_id: current.id,
       change_reason: updates.change_reason ?? null,
       createdBy: updates.createdBy ?? current.createdBy,
+      generatedBy: current.generatedBy,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -226,11 +229,12 @@ export class MemoryArtifactRepository implements IArtifactAggregateRepository {
     return newVersion;
   }
 
-  async updateStatus(orgId: string, id: string, status: ArtifactStatus): Promise<ArtifactEntity> {
+  async updateStatus(orgId: string, id: string, status: ArtifactStatus, generatedBy?: "ai" | "user" | "hybrid"): Promise<ArtifactEntity> {
     requireOrgId(orgId);
     const current = await this.findById(orgId, id);
     if (!current) throw new Error("Artifact not found");
     current.status = status;
+    if (generatedBy) current.generatedBy = generatedBy;
     current.updatedAt = new Date();
     return current;
   }

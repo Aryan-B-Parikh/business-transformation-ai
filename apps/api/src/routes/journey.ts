@@ -12,7 +12,7 @@ const rollbackSchema = z.object({ stage: z.enum(stages), version: z.number().int
 router.get("/projects/:id/journey", authenticate, authorize("org_admin","workspace_admin","contributor","reviewer","viewer"), async (req: AuthedRequest,res:Response) => {
   const orgId=req.user!.orgId, projectId=String(req.params.id);
   if(!(await getRepositories().projects.findProjectById(orgId,projectId))) return res.status(404).json({error:{code:"NOT_FOUND",message:"Project not found"}});
-  return res.json({project_id:projectId,stages:await getRepositories().transformation.getJourneyState(orgId,projectId)});
+  return res.json(await getRepositories().transformation.getJourneyState(orgId,projectId));
 });
 
 router.post("/projects/:id/journey/transition", authenticate, authorize("org_admin","workspace_admin","contributor"), async (req:AuthedRequest,res:Response) => {
@@ -23,7 +23,7 @@ router.post("/projects/:id/journey/transition", authenticate, authorize("org_adm
     const result=await getRepositories().transformation.transitionStage(orgId,projectId,parsed.data.stage,parsed.data.status,req.user!.userId,parsed.data.reason,parsed.data.version);
     await getRepositories().governance.recordAuditLog(orgId,req.user!.userId,"journey.stage_transition","project",projectId,{stage:parsed.data.stage,status:parsed.data.status,version:result.stage_version,reason:parsed.data.reason??null});
     return res.json(result);
-  } catch(error) { const message=error instanceof Error?error.message:"Journey transition failed"; const status=/invalid|concurrency|version|expected/i.test(message)?409:500; return res.status(status).json({error:{code:status===409?"CONFLICT":"INTERNAL_ERROR",message}}); }
+  } catch(error) { const message=error instanceof Error?error.message:"Journey transition failed"; const status=/invalid|concurrency|version|expected|concurrent/i.test(message)?409:500; return res.status(status).json({error:{code:status===409?"CONFLICT":"INTERNAL_ERROR",message}}); }
 });
 
 router.post("/projects/:id/journey/rollback", authenticate, authorize("org_admin","workspace_admin"), async (req:AuthedRequest,res:Response) => {

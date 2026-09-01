@@ -62,6 +62,7 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       - DATABASE_URL=postgresql://bta_app:bta_app_password@postgres:5432/bta_test?schema=public
+      - DATABASE_ADMIN_URL=postgresql://postgres:postgres@postgres:5432/bta_test?schema=public
       - STORAGE_BACKEND=postgres
       - S3_ENDPOINT=http://minio:9000
       - S3_REGION=us-east-1
@@ -89,7 +90,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    command: ["node", "apps/api/dist/workers/outboxWorker.js"]
+    command: ["node", "apps/api/dist/workers/index.js"]
     environment:
       - DATABASE_URL=postgresql://bta_app:bta_app_password@postgres:5432/bta_test?schema=public
       - STORAGE_BACKEND=postgres

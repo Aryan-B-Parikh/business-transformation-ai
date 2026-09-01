@@ -10,6 +10,7 @@ import {
   WidthType,
   BorderStyle,
 } from "docx";
+import { renderToSvg } from "../diagramRenderer";
 
 export async function generateDocx(
   title: string,
@@ -75,7 +76,15 @@ export async function generateDocx(
     }
     if ((data as Record<string, unknown>).diagramSpec) {
       const spec = (data as Record<string, unknown>).diagramSpec as { nodes?: unknown[]; edges?: unknown[] };
-      rows.push(new TableRow({ children: [new TableCell({ children: [new Paragraph({ text: "Diagram" })] }), new TableCell({ children: [new Paragraph({ text: `${Array.isArray(spec.nodes)?spec.nodes.length:0} nodes, ${Array.isArray(spec.edges)?spec.edges.length:0} edges` })] })] }));
+      const nodeCount = Array.isArray(spec.nodes) ? spec.nodes.length : 0;
+      const edgeCount = Array.isArray(spec.edges) ? spec.edges.length : 0;
+      rows.push(new TableRow({ children: [new TableCell({ children: [new Paragraph({ text: "Diagram" })] }), new TableCell({ children: [new Paragraph({ text: `${nodeCount} nodes, ${edgeCount} edges` })] })] }));
+      // Embed rendered SVG diagram (text representation)
+      try {
+        const svg = renderToSvg(spec as unknown as Parameters<typeof renderToSvg>[0], { width: 480, height: 220 });
+        const svgCell = new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: svg, size: 6 })] })] });
+        rows.push(new TableRow({ children: [new TableCell({ children: [new Paragraph({ text: "Diagram (SVG)" })] }), svgCell] }));
+      } catch { /* skip */ }
     }
     for (const [key, val] of Object.entries(data)) {
       if (["hldSections","lldSections","diagramSpec"].includes(key)) continue;

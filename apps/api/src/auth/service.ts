@@ -9,7 +9,7 @@ import { findUserByEmail, findUserById, verifyPassword } from "./users";
 
 export interface LoginRequest { email: string; password: string; orgId?: string; }
 export interface SsoCallbackRequest { provider: string; code: string; email?: string; }
-export interface AuthResult { token: string; refreshToken?: string; user: { id: string; orgId: string; email: string; name: string; role: string }; }
+export interface AuthResult { token: string; refreshToken?: string; refreshTokenBody?: string; user: { id: string; orgId: string; email: string; name: string; role: string }; }
 type UserRecord = { id: string; orgId: string; email: string; name: string; role: string; passwordHash?: string | null; ssoProvider?: string | null };
 function authError(message: string, status = 401, code = "UNAUTHORIZED") { const e = new Error(message) as Error & { status?: number; code?: string }; e.status = status; e.code = code; return e; }
 function issue(user: UserRecord, refreshToken?: string): AuthResult { return { token: signToken({ userId: user.id, orgId: user.orgId, role: user.role, email: user.email }), refreshToken, user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role } }; }
@@ -33,7 +33,16 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
     await withTenant(prisma as never, req.orgId, async (tx: unknown) => { await (tx as any).$executeRawUnsafe("INSERT INTO refresh_tokens (id,user_id,org_id,token_hash,expires_at) VALUES (gen_random_uuid(),$1::uuid,$2::uuid,$3,now()+interval '7 days')", user.id, req.orgId, hash); });
     return issue(user, refreshToken);
   }
-  const user = findUserByEmail(req.email);
+  // Test mode: try database first (for e2e tests with real DB), fallback to seed users
+  if (req.orgId) {
+    try {
+      const user = await productionUserByEmail(req.email, req.orgId);
+      if (user && user.passwordHash && await bcrypt.compare(req.password, user.passwordHash)) {
+        return issue(user, createRefreshToken(user.id).token);
+      }
+    } catch { /* fallback to seed */ }
+  }
+  const user = findUserByEmail(req.email, req.orgId);
   if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
   return issue(user, createRefreshToken(user.id).token);
 }
@@ -64,7 +73,15 @@ export async function refreshAccessToken(refreshTokenStr: string): Promise<AuthR
     });
   }
   const rt = findRefreshToken(refreshTokenStr); if (!rt || rt.revokedAt || rt.expiresAt <= new Date()) throw authError("Refresh token expired or revoked");
-  const user = findUserById(rt.userId); if (!user) throw authError("User not found");
+  // Try seed users first, then database
+  let user = findUserById(rt.userId);
+  if (!user) {
+    try {
+      const rows = await (prisma as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE id=$1::uuid LIMIT 1", rt.userId);
+      if (rows[0]) user = rows[0];
+    } catch { /* ignore */ }
+  }
+  if (!user) throw authError("User not found");
   revokeRefreshToken(rt.id); return issue(user, createRefreshToken(user.id).token);
 }
 

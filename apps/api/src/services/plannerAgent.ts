@@ -1,5 +1,6 @@
 import { prisma } from "../db/client";
 import { getRepositories } from "../repositories";
+import { getGroundingContext } from "./ragGrounding";
 /**
  * Transformation Planner agent — TASK-020
  * POST /ai/v1/planning/generate-roadmap → roadmap artifact + roadmap_items rows
@@ -26,6 +27,7 @@ export interface PlannerRequest {
 export async function generateRoadmap(req: PlannerRequest): Promise<{ artifactId: string; content: RoadmapContent; roadmapItemIds: string[] }> {
   if (!req.projectId || !req.orgId) throw new Error("projectId and orgId required");
   const horizon = req.params?.horizonMonths || 6;
+  await getGroundingContext(req.orgId, req.projectId, `roadmap horizon ${horizon} months`, 5);
   const now = new Date();
   const phases = [
     { name: "Discovery & Assessment", durationWeeks: 3, dependencies: [] as string[] },

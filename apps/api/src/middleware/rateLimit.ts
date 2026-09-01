@@ -34,6 +34,11 @@ export function rateLimit(opts: { limit?: number; key?: (req: AuthedRequest) => 
   const limit = opts.limit ?? 60;
   const keyFn = opts.key ?? ((req: AuthedRequest) => req.user?.orgId || req.ip || "anon");
   return (req: AuthedRequest, res: Response, next: NextFunction) => {
+    // Disable rate limiting in test mode
+    if (process.env.NODE_ENV === "test" || process.env.DISABLE_RATE_LIMIT === "true") {
+      next();
+      return;
+    }
     const key = keyFn(req);
     if (!hit(key, limit)) {
       res.setHeader("Retry-After", String(Math.ceil(WINDOW_MS / 1000)));

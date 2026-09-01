@@ -5,6 +5,7 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = []
+  binaryTargets   = ["native"]
 }
 
 datasource db {
@@ -128,6 +129,7 @@ model User {
   name String
   role UserRole
   ssoProvider String? @map("sso_provider")
+  passwordHash String? @map("password_hash")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   workspacesCreated Workspace[] @relation("WorkspaceCreator")
@@ -210,6 +212,7 @@ model DocumentChunk {
   chunkText String @map("chunk_text") @db.Text
   embedding Unsupported("vector(1536)")?
   pageRef Int? @map("page_ref")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   @@index([orgId])
   @@index([documentId])
@@ -279,6 +282,7 @@ model ArtifactComment {
   authorId String @map("author_id") @db.Uuid
   parentCommentId String? @map("parent_comment_id") @db.Uuid
   content String @db.Text
+  status String @default("open")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
   author User @relation(fields: [authorId], references: [id])

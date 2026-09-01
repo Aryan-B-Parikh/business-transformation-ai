@@ -291,13 +291,15 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
     });
   }
 
-  async updateStatus(orgId: string, id: string, status: ArtifactStatus): Promise<ArtifactEntity> {
+  async updateStatus(orgId: string, id: string, status: ArtifactStatus, generatedBy?: "ai" | "user" | "hybrid"): Promise<ArtifactEntity> {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
+      const data: Record<string, unknown> = { status };
+      if (generatedBy) data.generatedBy = generatedBy;
       return p.artifact.update({
         where: { id },
-        data: { status },
+        data,
       });
     });
   }
@@ -307,7 +309,7 @@ export class PostgresArtifactRepository implements IArtifactAggregateRepository 
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.artifactComment.create({
-        data: { orgId: orgId, artifactId: artifactId, userId: userId, content, status: "open" },
+        data: { orgId: orgId, artifactId: artifactId, authorId: userId, content, status: "open" },
       });
     });
   }
@@ -401,12 +403,12 @@ export class PostgresTransformationRepository implements ITransformationAggregat
 export class PostgresCollaborationRepository implements ICollaborationAggregateRepository {
   constructor(private prisma: PrismaClientType) {}
 
-  async recordApproval(orgId: string, artifactId: string, userId: string, status: "approved" | "rejected" | "changes_requested", comment?: string): Promise<ArtifactApprovalEntity> {
+  async recordApproval(orgId: string, artifactId: string, userId: string, decision: "approved" | "rejected" | "changes_requested", comment?: string): Promise<ArtifactApprovalEntity> {
     assertTenant(orgId);
     return withTenant(this.prisma, orgId, async (tx: unknown) => {
       const p = tx as PrismaClientType;
       return p.artifactApproval.create({
-        data: { orgId: orgId, artifactId: artifactId, userId: userId, status, comment },
+        data: { orgId: orgId, artifactId: artifactId, approverId: userId, decision, comment },
       });
     });
   }
@@ -508,9 +510,9 @@ export class PostgresGovernanceRepository implements IGovernanceAggregateReposit
           orgId: orgId,
           actorId: actorId,
           action,
-          resource_type: resourceType,
-          resource_id: resourceId,
-          details,
+          targetType: resourceType,
+          targetId: resourceId,
+          metadata: details,
         },
       });
     });

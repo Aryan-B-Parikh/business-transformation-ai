@@ -96,3 +96,32 @@ export async function hasProjectAccess(
     return false;
   }
 }
+
+/**
+ * Express middleware: enforces project membership after authorize().
+ * Use as: router.post("/...", authenticate, authorize("contributor"), projectAuthorize, handler)
+ * Extracts projectId from req.params.id or req.body.projectId.
+ */
+export function projectAuthorize(getMembers: (orgId: string, projectId: string) => Promise<Array<{ userId: string }>>) {
+  return async (req: AuthedRequest, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Not authenticated" } });
+      return;
+    }
+    const projectId = String((req.params as Record<string, string>).id || req.params?.projectId || req.body?.projectId || "");
+    if (!projectId) {
+      res.status(400).json({ error: { code: "BAD_REQUEST", message: "projectId required" } });
+      return;
+    }
+    const ok = await hasProjectAccess(req.user.orgId, projectId, req.user.userId, req.user.role as UserRole, getMembers);
+    if (!ok) {
+      try {
+        const { getRepositories } = await import("../repositories");
+        await getRepositories().governance.recordAuditLog(req.user.orgId, req.user.userId, "authz.project_forbidden", "project", projectId, { role: req.user.role }).catch(() => undefined);
+      } catch { /* ignore */ }
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Not a member of this project" } });
+      return;
+    }
+    next();
+  };
+}

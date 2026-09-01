@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { generateStructuredCompletion } from "../ai/llmProvider";
 import { getRepositories } from "../repositories";
+import { getGroundingContext } from "./ragGrounding";
 /**
  * Solution Architecture Builder agent — TASK-014
  * POST /ai/v1/architecture/generate → HLD/LLD artifact incl. diagram_spec
@@ -60,10 +61,11 @@ export async function generateArchitecture(req: ArchitectureRequest): Promise<{ 
 
   let content: ArchitectureContent;
   const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const historyText = (req.conversationHistory || []).map((m) => `${m.role}: ${m.content}`).join("\n").slice(0, 4000);
+  const grounding = await getGroundingContext(req.orgId, req.projectId, historyText || `${req.type} ${cloud}`, 5);
   if (useLLM) {
     try {
-      const history = (req.conversationHistory || []).map((m) => `${m.role}: ${m.content}`).join("\n").slice(0, 4000);
-      content = await generateStructuredCompletion(`You are a Solution Architecture Builder. Generate ${isHld ? "HLD" : "LLD"} architecture. Cloud=${cloud}, compliance=${compliance.join(",")}. Return structured JSON only.`, `Project ${req.projectId} context:\n${history}\nGenerate architecture for cloud ${cloud}.`, ArchitectureLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId });
+      content = await generateStructuredCompletion(`You are a Solution Architecture Builder. Generate ${isHld ? "HLD" : "LLD"} architecture. Cloud=${cloud}, compliance=${compliance.join(",")}. Return structured JSON only.`, `Project ${req.projectId} context:\n${historyText}\nGenerate architecture for cloud ${cloud}.${grounding.contextBlock}`, ArchitectureLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId });
     } catch {
       content = deterministicContent(req, cloud, compliance, isHld);
     }

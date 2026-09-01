@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { generateStructuredCompletion } from "../ai/llmProvider";
 import { getRepositories } from "../repositories";
+import { getGroundingContext } from "./ragGrounding";
 /**
  * Database & Integration Designer agent — TASK-016
  * POST /ai/v1/data-model/generate → ER diagram + REST API spec artifact
@@ -44,13 +45,58 @@ export async function generateDataModel(req: DataModelingRequest): Promise<{ art
   const domain = req.params?.domain || "Order";
   let content: DataModelingContent;
   const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const grounding = await getGroundingContext(req.orgId, req.projectId, `data model ${domain}`, 5);
   if (useLLM) {
-    try { content = await generateStructuredCompletion(`You are a Database & Integration Designer. Generate ER diagram, DDL, and OpenAPI for domain ${domain}. Return structured JSON only.`, `Generate data model for domain ${domain}`, DataModelLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicDataModel(domain); }
+    try { content = await generateStructuredCompletion(`You are a Database & Integration Designer. Generate ER diagram, DDL, and OpenAPI for domain ${domain}. Return structured JSON only.`, `Generate data model for domain ${domain}.${grounding.contextBlock}`, DataModelLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicDataModel(domain); }
   } else content = deterministicDataModel(domain);
 
   const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: "er_diagram",
     title: `Data Model — ${domain}`,
+    status: "draft",
+    content: content as unknown as Record<string, unknown>,
+    createdBy: req.createdBy,
+  });
+
+  return { artifactId: artifact.id, content };
+}
+
+export interface ApiSpecContent {
+  openapi: string;
+  info: { title: string; version: string };
+  paths: Record<string, unknown>;
+}
+
+function deterministicApiSpec(domain: string): ApiSpecContent {
+  return {
+    openapi: "3.0.0",
+    info: { title: `${domain} API`, version: "1.0.0" },
+    paths: {
+      [`/${domain.toLowerCase()}s`]: {
+        get: { summary: `List ${domain}s`, responses: { "200": { description: "OK" } } },
+        post: { summary: `Create ${domain}`, responses: { "201": { description: "Created" } } },
+      },
+      [`/${domain.toLowerCase()}s/{id}`]: {
+        get: { summary: `Get ${domain}`, responses: { "200": { description: "OK" } } },
+        put: { summary: `Update ${domain}`, responses: { "200": { description: "OK" } } },
+        delete: { summary: `Delete ${domain}`, responses: { "204": { description: "No Content" } } },
+      },
+    },
+  };
+}
+
+export async function generateApiSpec(req: DataModelingRequest): Promise<{ artifactId: string; content: ApiSpecContent }> {
+  const domain = req.params?.domain || "Order";
+  let content: ApiSpecContent;
+  const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const grounding = await getGroundingContext(req.orgId, req.projectId, `api spec ${domain}`, 5);
+  if (useLLM) {
+    try { content = await generateStructuredCompletion(`You are an API Designer. Generate OpenAPI 3.0 spec for domain ${domain}. Return structured JSON only.`, `Generate API spec for domain ${domain}.${grounding.contextBlock}`, z.object({ openapi: z.string(), info: z.object({ title: z.string(), version: z.string() }), paths: z.record(z.unknown()) }), { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicApiSpec(domain); }
+  } else content = deterministicApiSpec(domain);
+
+  const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
+    type: "api_spec",
+    title: `API Spec — ${domain}`,
     status: "draft",
     content: content as unknown as Record<string, unknown>,
     createdBy: req.createdBy,

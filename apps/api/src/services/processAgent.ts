@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { generateStructuredCompletion } from "../ai/llmProvider";
 import { getRepositories } from "../repositories";
+import { getGroundingContext } from "./ragGrounding";
 /**
  * Process Intelligence Designer agent — TASK-015
  * POST /ai/v1/process/generate-workflow → BPMN/workflow artifact
@@ -43,8 +44,9 @@ export async function generateProcess(req: ProcessRequest): Promise<{ artifactId
   const name = req.params?.processName || "Order to Cash";
   let content: ProcessContent;
   const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const grounding = await getGroundingContext(req.orgId, req.projectId, `process workflow ${name}`, 5);
   if (useLLM) {
-    try { content = await generateStructuredCompletion(`You are a Process Intelligence Designer. Generate BPMN workflow for ${name}. Return structured JSON only.`, `Generate BPMN workflow, approval workflows, decision trees for ${name}`, ProcessLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicProcess(name); }
+    try { content = await generateStructuredCompletion(`You are a Process Intelligence Designer. Generate BPMN workflow for ${name}. Return structured JSON only.`, `Generate BPMN workflow, approval workflows, decision trees for ${name}.${grounding.contextBlock}`, ProcessLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicProcess(name); }
   } else content = deterministicProcess(name);
 
   const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {

@@ -10,7 +10,7 @@ import { AuthedRequest, authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/rbac";
 import { generateArchitecture } from "../services/architectureAgent";
 import { generateBusinessAnalysis } from "../services/businessAnalysis";
-import { generateDataModel } from "../services/dataModelingAgent";
+import { generateDataModel, generateApiSpec } from "../services/dataModelingAgent";
 import { renderToSvg, isValidSvg } from "../services/diagramRenderer";
 import { generateProcess } from "../services/processAgent";
 import { generateUx } from "../services/uxAgent";
@@ -123,9 +123,13 @@ router.post(
           result = { artifactId: r.artifactId, content: r.content };
           break;
         }
-        case "er_diagram":
-        case "api_spec": {
+        case "er_diagram": {
           const r = await generateDataModel({ projectId, orgId, createdBy: userId, params: params as { domain?: string } });
+          result = { artifactId: r.artifactId, content: r.content };
+          break;
+        }
+        case "api_spec": {
+          const r = await generateApiSpec({ projectId, orgId, createdBy: userId, params: params as { domain?: string } });
           result = { artifactId: r.artifactId, content: r.content };
           break;
         }

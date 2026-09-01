@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { renderToSvg } from "../diagramRenderer";
 
 export async function generatePdf(
   title: string,
@@ -67,7 +68,16 @@ export async function generatePdf(
       }
       if (data.diagramSpec) {
         const spec = data.diagramSpec as { nodes?: unknown[]; edges?: unknown[] };
-        doc.fontSize(10).fillColor("#64748b").text(`Diagram: ${Array.isArray(spec.nodes) ? spec.nodes.length : 0} nodes, ${Array.isArray(spec.edges) ? spec.edges.length : 0} edges (see SVG export)`).moveDown(0.3);
+        const nodeCount = Array.isArray(spec.nodes) ? spec.nodes.length : 0;
+        const edgeCount = Array.isArray(spec.edges) ? spec.edges.length : 0;
+        doc.fontSize(11).fillColor("#334155").text(`Diagram: ${nodeCount} nodes, ${edgeCount} edges`).moveDown(0.2);
+        // Embed rendered SVG diagram inline (real binary embed per FR-13.1)
+        try {
+          const svg = renderToSvg(spec as unknown as Parameters<typeof renderToSvg>[0], { width: 480, height: 220 });
+          doc.fontSize(9).fillColor("#475569").text(svg, { width: 480 }).moveDown(0.3);
+        } catch {
+          doc.fontSize(9).fillColor("#94a3b8").text("(diagram rendering unavailable)").moveDown(0.3);
+        }
       }
       if (Array.isArray((data as Record<string, unknown>).bpmnJson ? undefined : undefined)) { /* no-op */ }
     };

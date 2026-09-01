@@ -1,9 +1,13 @@
-import { getRepositories } from "../repositories";
+import { getRepositories, initializeRepositories } from "../repositories";
 import { deliverWebhookHttp } from "../services/webhook/dispatcher";
 import { prisma } from "../db/client";
+import { PrismaClientType } from "../repositories/postgres";
 
 const MAX_CONCURRENCY = Number(process.env.WORKER_CONCURRENCY || 5);
 let shuttingDown = false;
+
+// Initialize repositories for postgres backend
+initializeRepositories("postgres", prisma as unknown as PrismaClientType);
 
 async function processWebhooks(): Promise<number> {
   const repo = getRepositories().webhooks;

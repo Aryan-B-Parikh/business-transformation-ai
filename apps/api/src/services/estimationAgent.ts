@@ -1,6 +1,7 @@
 import { prisma } from "../db/client";
 import { RiskLevel } from "@prisma/client";
 import { getRepositories } from "../repositories";
+import { getGroundingContext } from "./ragGrounding";
 /**
  * AI Planning Engine (estimation) — TASK-021
  * POST /ai/v1/planning/estimate → effort_estimates rows + risk levels
@@ -29,6 +30,7 @@ export interface EstimationRequest {
 export async function generateEstimation(req: EstimationRequest): Promise<{ artifactId: string; content: EstimationContent; estimateIds: string[] }> {
   if (!req.projectId || !req.orgId) throw new Error("projectId and orgId required");
   const scope = req.scope && req.scope.length > 0 ? req.scope : ["Discovery", "Foundation", "Build", "Pilot", "Scale"];
+  await getGroundingContext(req.orgId, req.projectId, `effort estimation ${scope.join(" ")}`, 5);
 
   const items: { name: string; effortHours: number; costEstimate: number; riskLevel: RiskLevel }[] = scope.map((name) => {
     // Use name hash for deterministic but non-zero

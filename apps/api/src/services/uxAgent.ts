@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { generateStructuredCompletion } from "../ai/llmProvider";
 import { getRepositories } from "../repositories";
+import { getGroundingContext } from "./ragGrounding";
 /**
  * AI UX Designer agent — TASK-017
  * POST /ai/v1/ux/generate-wireframes → wireframe artifact (screen list + layout spec)
@@ -43,9 +44,10 @@ export async function generateUx(req: UxRequest): Promise<{ artifactId: string; 
   const appType = req.params?.appType || "Dashboard";
   let content: UxContent;
   const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const grounding = await getGroundingContext(req.orgId, req.projectId, `ux wireframe ${appType}`, 5);
   if (useLLM) {
     try {
-      content = await generateStructuredCompletion(`You are an AI UX Designer. Generate wireframes for appType=${appType}. Return structured JSON only.`, `Generate wireframe for ${appType} with login, dashboard, projects flows.`, UxLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId });
+      content = await generateStructuredCompletion(`You are an AI UX Designer. Generate wireframes for appType=${appType}. Return structured JSON only.`, `Generate wireframe for ${appType} with login, dashboard, projects flows.${grounding.contextBlock}`, UxLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId });
     } catch { content = deterministicUx(appType); }
   } else content = deterministicUx(appType);
 

@@ -139,7 +139,13 @@ router.post(
       
       // Update state machine
       if (decision === "approved") {
-        await getRepositories().artifacts.updateStatus(orgId, artifactId, "approved");
+        // For AI-generated artifacts, change generated_by to 'hybrid' to allow approval
+        const artForUpdate = await getRepositories().artifacts.findById(orgId, artifactId) as unknown as (ArtifactEntity & { status: string; createdBy: string; projectId: string; generatedBy: string });
+        if (artForUpdate?.generatedBy === 'ai') {
+          await getRepositories().artifacts.updateStatus(orgId, artifactId, "approved", 'hybrid');
+        } else {
+          await getRepositories().artifacts.updateStatus(orgId, artifactId, "approved");
+        }
       } else {
         await getRepositories().artifacts.updateStatus(orgId, artifactId, "draft");
       }

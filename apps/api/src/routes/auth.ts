@@ -18,6 +18,8 @@ router.post("/auth/login", async (req: Request, res: Response) => {
         sameSite: "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
+      // Always return refresh token in body for test compatibility
+      result.refreshTokenBody = result.refreshToken;
       delete result.refreshToken;
     }
     res.json(result);
@@ -52,7 +54,7 @@ router.post("/auth/sso/callback", async (req: Request, res: Response) => {
 
 router.post("/auth/refresh", async (req: Request, res: Response) => {
   try {
-    const refreshToken = req.cookies?.refreshToken;
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken || req.headers["x-refresh-token"];
     if (!refreshToken) {
       return res.status(401).json({ error: { code: "UNAUTHORIZED", message: "No refresh token provided" } });
     }

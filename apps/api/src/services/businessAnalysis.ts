@@ -7,6 +7,7 @@ import { z } from "zod";
 import { generateStructuredCompletion } from "../ai/llmProvider";
 import { getRepositories } from "../repositories";
 import { ArtifactType } from "@bta/shared";
+import { getGroundingContext } from "./ragGrounding";
 
 // ... [skipping down to the generation code]
 // I will just replace the actual createArtifact part since the chunk needs exact match
@@ -54,8 +55,10 @@ export async function generateBusinessAnalysis(req: BusinessAnalysisRequest): Pr
   const historyText = (req.conversationHistory || []).map((m) => m.content).join(" ");
   const docText = (req.documentExcerpts || []).join(" ");
 
+  const grounding = await getGroundingContext(req.orgId, req.projectId, historyText + " " + docText, 5);
+
   const systemPrompt = "You are an expert Business Analysis Agent. Generate a detailed business analysis based on the input.";
-  
+
   let content: any;
 
   if (process.env.NODE_ENV === "test") {
@@ -81,10 +84,10 @@ export async function generateBusinessAnalysis(req: BusinessAnalysisRequest): Pr
       },
     };
   } else {
-    // Real network generation
+    // Real network generation with RAG grounding
     content = await generateStructuredCompletion(
       systemPrompt,
-      historyText + "\n" + docText,
+      historyText + "\n" + docText + grounding.contextBlock,
       BusinessAnalysisOutputSchema,
       { model: "gpt-4o" }
     );
