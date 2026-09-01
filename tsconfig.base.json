@@ -14,7 +14,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
-    "noEmit": true
+    "noEmit": false
   },
   "files": []
 }
