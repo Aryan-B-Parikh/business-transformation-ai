@@ -57,7 +57,11 @@ export async function validateIdeaLLM(req: ValidateIdeaRequest & { orgId?: strin
   const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
   const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true";
   const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
-  if (!useLLM) return heuristic(req);
+  const isExplicitTestMockMode = process.env.NODE_ENV === "test" && !allowLiveInTest;
+  if (!useLLM) {
+    if (isExplicitTestMockMode) return heuristic(req);
+    throw new Error("LLM provider unavailable and not in explicit test mock mode — refusing deterministic fallback");
+  }
   let grounding = { contextBlock: "", citations: [] as unknown[] };
   if (req.orgId && (req as { projectId?: string }).projectId) {
     try { grounding = await getGroundingContext(req.orgId, (req as { projectId: string }).projectId, req.idea, 5); } catch { /* ignore */ }
@@ -72,5 +76,8 @@ export async function validateIdeaLLM(req: ValidateIdeaRequest & { orgId?: strin
     // Normalize to union type
     if (result.type === "clarifying_questions") return { type: "clarifying_questions", questions: result.questions || [], reason: result.reason || "Needs clarification" };
     return { type: "recommendations", feasibility: (result.feasibility as "high"|"medium"|"low") || "high", recommendations: result.recommendations || [], bestPractices: result.bestPractices || [], microsoftStack: result.microsoftStack };
-  } catch { return heuristic(req); }
+  } catch (e) {
+    if (isExplicitTestMockMode) return heuristic(req);
+    throw new Error(`LLM provider failed for consultant: ${(e as Error).message}`);
+  }
 }

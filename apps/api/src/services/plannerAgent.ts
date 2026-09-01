@@ -1,6 +1,13 @@
+import { z } from "zod";
 import { prisma } from "../db/client";
 import { getRepositories } from "../repositories";
 import { getGroundingContext } from "./ragGrounding";
+import { generateStructuredCompletion } from "../ai/llmProvider";
+
+const PlannerLLMSchema = z.object({
+  phases: z.array(z.object({ name: z.string(), durationWeeks: z.number().min(1).max(52), dependencies: z.array(z.string()) })).min(1),
+  milestones: z.array(z.object({ title: z.string(), phase: z.string(), date: z.string() })).optional(),
+});
 /**
  * Transformation Planner agent — TASK-020
  * POST /ai/v1/planning/generate-roadmap → roadmap artifact + roadmap_items rows
@@ -27,15 +34,29 @@ export interface PlannerRequest {
 export async function generateRoadmap(req: PlannerRequest): Promise<{ artifactId: string; content: RoadmapContent; roadmapItemIds: string[] }> {
   if (!req.projectId || !req.orgId) throw new Error("projectId and orgId required");
   const horizon = req.params?.horizonMonths || 6;
-  await getGroundingContext(req.orgId, req.projectId, `roadmap horizon ${horizon} months`, 5);
-  const now = new Date();
-  const phases = [
+  const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true";
+  const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
+  const isExplicitTestMockMode = process.env.NODE_ENV === "test" && !allowLiveInTest;
+  const grounding = await getGroundingContext(req.orgId, req.projectId, `roadmap horizon ${horizon} months`, 5);
+  let phases: RoadmapContent["phases"] = [
     { name: "Discovery & Assessment", durationWeeks: 3, dependencies: [] as string[] },
     { name: "Foundation & Migration", durationWeeks: 6, dependencies: ["Discovery & Assessment"] },
     { name: "Build & Integration", durationWeeks: 8, dependencies: ["Foundation & Migration"] },
     { name: "Pilot & Change Management", durationWeeks: 4, dependencies: ["Build & Integration"] },
     { name: "Scale & Optimization", durationWeeks: 4, dependencies: ["Pilot & Change Management"] },
   ];
+  if (useLLM) {
+    try {
+      const llmRes = await generateStructuredCompletion(`You are a Transformation Planner. Generate a ${horizon}-month roadmap with phases, durations (weeks), dependencies, and milestones. Return JSON only.`, `Horizon ${horizon} months for project ${req.projectId}.${grounding.contextBlock}`, PlannerLLMSchema, { model: "gemini-3.6-flash", orgId: req.orgId });
+      if (llmRes.phases?.length) phases = llmRes.phases as RoadmapContent["phases"];
+    } catch (e) {
+      if (isExplicitTestMockMode) { /* fallback to deterministic */ } else throw new Error(`LLM provider failed for roadmap: ${(e as Error).message}`);
+    }
+  } else if (!isExplicitTestMockMode) {
+    throw new Error("LLM provider unavailable and not in explicit test mock mode — refusing deterministic fallback");
+  }
+  const now = new Date();
 
   const content: RoadmapContent = {
     phases: phases.map((p) => ({ ...p })),

@@ -31,7 +31,8 @@ export async function getOrgUsage(orgId: string): Promise<number> {
       const { prisma: p } = await import("../db/client");
       const rows = await (p as any).$queryRawUnsafe('SELECT COALESCE(SUM("totalTokens"),0)::int as sum FROM "ai_usage_logs" WHERE "orgId" = $1 AND "createdAt" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
       return Number(rows[0]?.sum || 0);
-    } catch {
+    } catch (e) {
+      if (process.env.NODE_ENV === "production") throw new Error(`Failed to fetch org usage (PostgreSQL authoritative): ${(e as Error).message}`);
       return orgUsageFallback.get(orgId) || 0;
     }
   }

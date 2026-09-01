@@ -58,6 +58,9 @@ export function initializeProductionRuntime(): void {
     if (!process.env.WEBHOOK_SIGNING_SECRET || process.env.WEBHOOK_SIGNING_SECRET.length < 16) {
       throw new Error("CRITICAL SECURITY VIOLATION: production requires WEBHOOK_SIGNING_SECRET >=16 chars");
     }
+    if (!process.env.PARSER_SANDBOX_URL) {
+      throw new Error("CRITICAL SECURITY VIOLATION: production requires PARSER_SANDBOX_URL for isolated document parsing");
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
