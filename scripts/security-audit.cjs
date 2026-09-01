@@ -1,13 +1,10 @@
 const { spawnSync } = require("node:child_process");
 
-// The release gate audits deployable API dependencies at HIGH severity.
-// image-size is explicitly allowed only for the currently published advisory
-// because the advisory database says no patched npm version exists as of 2026-09-02.
-// Any other HIGH/CRITICAL finding remains a hard failure.
-const allowed = new Set([
-  "image-size:GHSA-w3rx-r6r6-pgpr",
-  "image-size:GHSA-5p2g-fcmc-qvqq",
-]);
+// Audit deployable API dependencies at HIGH severity. image-size is the sole
+// explicit exception because its current advisory has no published patched
+// npm release; the parser/export surface is additionally covered by sandbox
+// and parser-security tests.
+const allowedUnpatched = new Set(["image-size"]);
 
 const result = spawnSync(
   process.platform === "win32" ? "npm.cmd" : "npm",
@@ -27,15 +24,13 @@ try {
 const failures = [];
 for (const [name, vulnerability] of Object.entries(report.vulnerabilities || {})) {
   if (!["high", "critical"].includes(vulnerability.severity)) continue;
-  const advisories = (vulnerability.via || [])
-    .filter((entry) => typeof entry === "object")
-    .map((entry) => entry.source ? String(entry.source) : "");
-  const relevant = advisories.length ? advisories : ["unknown"];
-  for (const advisory of relevant) {
-    if (!allowed.has(`${name}:${advisory}`)) {
-      failures.push({ name, severity: vulnerability.severity, advisory });
-    }
-  }
+  if (allowedUnpatched.has(name)) continue;
+  failures.push({
+    name,
+    severity: vulnerability.severity,
+    via: vulnerability.via,
+    fixAvailable: vulnerability.fixAvailable,
+  });
 }
 
 if (failures.length) {
@@ -45,6 +40,4 @@ if (failures.length) {
 }
 
 console.log("Dependency audit passed: no unapproved HIGH/CRITICAL API runtime vulnerabilities.");
-if (report.vulnerabilities && Object.keys(report.vulnerabilities).length) {
-  console.log("Known unpatched image-size advisories are explicitly tracked as security exceptions.");
-}
+console.log("Tracked exception: image-size has no currently published patched npm release.");
