@@ -137,7 +137,7 @@ router.patch(
   }
 );
 
-// GET /admin/orgs/:orgId/api-keys — list inbound API keys (FR-13.2)
+// GET /admin/orgs/:orgId/api-keys — list inbound API keys (FR-13.2) — PostgreSQL is authoritative
 router.get(
   "/admin/orgs/:orgId/api-keys",
   authenticate,
@@ -146,11 +146,11 @@ router.get(
     const orgId = String(req.params.orgId);
     if (!isOrgAdmin(req, orgId)) { res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin" } }); return; }
     const { listKeys } = await import("../middleware/apiKey");
-    res.json({ data: listKeys(orgId) });
+    res.json({ data: await listKeys(orgId) });
   }
 );
 
-// POST /admin/orgs/:orgId/api-keys — create inbound API key (raw returned once)
+// POST /admin/orgs/:orgId/api-keys — create inbound API key (raw returned once, hash persisted)
 router.post(
   "/admin/orgs/:orgId/api-keys",
   authenticate,
@@ -159,14 +159,16 @@ router.post(
     const orgId = String(req.params.orgId);
     if (!isOrgAdmin(req, orgId)) { res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin" } }); return; }
     const scopes = Array.isArray((req.body as { scopes?: string[] })?.scopes) ? (req.body as { scopes: string[] }).scopes : ["artifacts:read"];
+    const name = typeof (req.body as { name?: string })?.name === "string" ? (req.body as { name: string }).name : undefined;
+    const expiresAt = typeof (req.body as { expiresAt?: string })?.expiresAt === "string" ? new Date((req.body as { expiresAt: string }).expiresAt) : undefined;
     const { createManagedKey } = await import("../middleware/apiKey");
-    const { raw, record } = createManagedKey(orgId, scopes);
-    await getRepositories().governance.recordAuditLog(orgId, req.user!.userId, "api_key.create", "api_key", record.id, { scopes });
+    const { raw, record } = await createManagedKey(orgId, scopes, name, expiresAt);
+    await getRepositories().governance.recordAuditLog(orgId, req.user!.userId, "api_key.create", "api_key", record.id, { scopes, name: name || null });
     res.status(201).json({ id: record.id, orgId, scopes, raw, hint: `Use header X-API-Key: ${raw.slice(0, 12)}...` });
   }
 );
 
-// DELETE /admin/orgs/:orgId/api-keys/:id
+// DELETE /admin/orgs/:orgId/api-keys/:id — revoke (sets revokedAt) + audit
 router.delete(
   "/admin/orgs/:orgId/api-keys/:id",
   authenticate,
@@ -176,7 +178,7 @@ router.delete(
     const id = String(req.params.id);
     if (!isOrgAdmin(req, orgId)) { res.status(403).json({ error: { code: "FORBIDDEN", message: "Only org_admin" } }); return; }
     const { deleteKey } = await import("../middleware/apiKey");
-    if (!deleteKey(orgId, id)) { res.status(404).json({ error: { code: "NOT_FOUND", message: "API key not found" } }); return; }
+    if (!await deleteKey(orgId, id)) { res.status(404).json({ error: { code: "NOT_FOUND", message: "API key not found" } }); return; }
     await getRepositories().governance.recordAuditLog(orgId, req.user!.userId, "api_key.delete", "api_key", id, {});
     res.status(204).send();
   }

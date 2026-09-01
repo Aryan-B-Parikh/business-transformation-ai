@@ -44,12 +44,14 @@ export async function generateUx(req: UxRequest): Promise<{ artifactId: string; 
   const appType = req.params?.appType || "Dashboard";
   let content: UxContent;
   const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY); const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true"; const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
+  const isExplicitTestMockMode = process.env.NODE_ENV === "test" && !allowLiveInTest;
   const grounding = await getGroundingContext(req.orgId, req.projectId, `ux wireframe ${appType}`, 5);
   if (useLLM) {
     try {
       content = await generateStructuredCompletion(`You are an AI UX Designer. Generate wireframes for appType=${appType}. Return structured JSON only.`, `Generate wireframe for ${appType} with login, dashboard, projects flows.${grounding.contextBlock}`, UxLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId });
-    } catch { content = deterministicUx(appType); }
-  } else content = deterministicUx(appType);
+    } catch (e) { if (isExplicitTestMockMode) content = deterministicUx(appType); else throw new Error(`LLM provider failed for ux: ${(e as Error).message}`); }
+  } else if (isExplicitTestMockMode) content = deterministicUx(appType);
+  else throw new Error("LLM provider unavailable and not in explicit test mock mode — refusing deterministic fallback");
 
   const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: "wireframe",

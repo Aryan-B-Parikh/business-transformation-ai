@@ -44,10 +44,12 @@ export async function generateProcess(req: ProcessRequest): Promise<{ artifactId
   const name = req.params?.processName || "Order to Cash";
   let content: ProcessContent;
   const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY); const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true"; const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
+  const isExplicitTestMockMode = process.env.NODE_ENV === "test" && !allowLiveInTest;
   const grounding = await getGroundingContext(req.orgId, req.projectId, `process workflow ${name}`, 5);
   if (useLLM) {
-    try { content = await generateStructuredCompletion(`You are a Process Intelligence Designer. Generate BPMN workflow for ${name}. Return structured JSON only.`, `Generate BPMN workflow, approval workflows, decision trees for ${name}.${grounding.contextBlock}`, ProcessLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicProcess(name); }
-  } else content = deterministicProcess(name);
+    try { content = await generateStructuredCompletion(`You are a Process Intelligence Designer. Generate BPMN workflow for ${name}. Return structured JSON only.`, `Generate BPMN workflow, approval workflows, decision trees for ${name}.${grounding.contextBlock}`, ProcessLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId }); } catch (e) { if (isExplicitTestMockMode) content = deterministicProcess(name); else throw new Error(`LLM provider failed for process: ${(e as Error).message}`); }
+  } else if (isExplicitTestMockMode) content = deterministicProcess(name);
+  else throw new Error("LLM provider unavailable and not in explicit test mock mode — refusing deterministic fallback");
 
   const artifact = await getRepositories().artifacts.create(req.orgId, req.projectId, {
     type: "process_workflow",

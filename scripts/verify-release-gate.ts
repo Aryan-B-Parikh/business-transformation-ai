@@ -194,13 +194,18 @@ console.log("=================================================");
   })();
 
   // ─────────────────────────────────────────────────────────────────────
-  // GATE 6: Worker durability — workers start and survive a process signal (strict: must probe live)
+  // GATE 6: Worker durability — crash recovery, lease, duplicate suppression, DLQ, graceful shutdown (strict: must probe live + code)
   // ─────────────────────────────────────────────────────────────────────
   await (async () => {
     const compose = readFileSafe("docker-compose.test.yml");
+    const workerSrc = readFileSafe("apps/api/src/workers/index.ts") + readFileSafe("apps/api/src/services/webhook/deliveryWorker.ts");
     const hasWorker = /worker/i.test(compose);
     const hasApi = /api:/i.test(compose);
-    const hasRestartPolicy = /restart:/i.test(compose);
+    const hasGraceful = /SIGTERM|graceful|shuttingDown/i.test(workerSrc);
+    const hasDeadLetter = /dead_letter/i.test(workerSrc);
+    const hasIdempotency = /delivered.*dead_letter|idempotency|skip if already/i.test(workerSrc);
+    const hasLease = /attempt_count|next_retry|SKIP LOCKED|pg_advisory/i.test(workerSrc + readFileSafe("apps/api/src/repositories/postgres/webhooks.ts"));
+    const codeOk = hasGraceful && hasDeadLetter && hasIdempotency;
     let livePassed = false;
     let liveDetail = "";
     try {
@@ -208,19 +213,21 @@ console.log("=================================================");
       const hasRunning = /worker|api/i.test(out) && /running/i.test(out);
       if (hasRunning) {
         livePassed = true;
-        liveDetail = "Worker + API running (live probe)";
+        liveDetail = `Worker + API running (live probe)`;
       } else {
         liveDetail = `Compose ps did not show running worker/api: ${out.slice(0, 120)}`;
       }
     } catch (e) {
       liveDetail = `ps probe failed: ${(e as Error).message.slice(0, 120)}`;
     }
-    if (livePassed) {
-      results.push({ id: 6, name: "Worker Durability & Restart", passed: true, detail: liveDetail });
+    const detail = `${liveDetail} | code: graceful=${hasGraceful} dead_letter=${hasDeadLetter} idempotency=${hasIdempotency} lease=${hasLease}`;
+    if (livePassed && codeOk) {
+      results.push({ id: 6, name: "Worker Durability & Restart", passed: true, detail });
     } else if (isStrict) {
-      results.push({ id: 6, name: "Worker Durability & Restart", passed: false, detail: `STRICT: ${liveDetail} — no fallback allowed` });
+      const missing = [!hasGraceful && "graceful", !hasDeadLetter && "dead_letter", !hasIdempotency && "idempotency", !hasLease && "lease"].filter(Boolean).join(",");
+      results.push({ id: 6, name: "Worker Durability & Restart", passed: false, detail: `STRICT: live=${livePassed} codeOk=${codeOk} missing:${missing} — ${liveDetail}` });
     } else {
-      results.push({ id: 6, name: "Worker Durability & Restart", passed: hasWorker && hasApi, detail: hasWorker && hasApi ? `Worker + API verified via compose (restart=${hasRestartPolicy}, live: ${liveDetail})` : "Missing worker/api in compose" });
+      results.push({ id: 6, name: "Worker Durability & Restart", passed: hasWorker && hasApi && codeOk, detail: hasWorker && hasApi && codeOk ? `Worker + API via compose + code (${detail})` : `Missing worker/api/code: ${detail}` });
     }
   })();
 

@@ -120,6 +120,7 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   users User[]
   workspaces Workspace[]
+  apiKeys ApiKey[]
   @@map("organizations")
 }
 model User {
@@ -497,4 +498,21 @@ model AiUsageLog {
   @@index([orgId])
   @@index([createdAt])
   @@map("ai_usage_logs")
+}
+
+model ApiKey {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId      String    @map("org_id") @db.Uuid
+  keyHash    String    @unique @map("key_hash")
+  name       String?
+  scopes     String[]  @default(["artifacts:read"])
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([keyHash])
+  @@map("api_keys")
 }

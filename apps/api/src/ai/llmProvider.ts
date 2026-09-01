@@ -17,58 +17,111 @@ export interface LLMConfig {
   timeoutMs?: number;
   orgId?: string;
   orgPlan?: "trial" | "standard" | "enterprise";
+  requestId?: string;
 }
 export class LLMTimeoutError extends Error { constructor(message: string) { super(message); this.name = "LLMTimeoutError"; } }
 type Invocation = { content: string; promptTokens?: number; completionTokens?: number };
 
-const orgUsage = new Map<string, number>();
+// Fallback Map only when DATABASE_URL is not set (unit tests without DB). Production uses PostgreSQL as source of truth.
+const orgUsageFallback = new Map<string, number>();
 
-export function getOrgUsage(orgId: string): number {
-  return orgUsage.get(orgId) || 0;
+export async function getOrgUsage(orgId: string): Promise<number> {
+  if (process.env.DATABASE_URL) {
+    try {
+      const { prisma: p } = await import("../db/client");
+      const rows = await (p as any).$queryRawUnsafe('SELECT COALESCE(SUM("totalTokens"),0)::int as sum FROM "ai_usage_logs" WHERE "orgId" = $1 AND "createdAt" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
+      return Number(rows[0]?.sum || 0);
+    } catch {
+      return orgUsageFallback.get(orgId) || 0;
+    }
+  }
+  return orgUsageFallback.get(orgId) || 0;
 }
 
 export function resetOrgUsage(): void {
-  orgUsage.clear();
+  orgUsageFallback.clear();
 }
 
-export function checkAndIncrementQuota(orgId?: string, orgPlan?: string, tokens: number = 0): void {
+function getPlanLimit(plan?: string): number {
+  const p = plan || "enterprise";
+  if (p === "trial") return 100_000;
+  if (p === "standard") return 1_000_000;
+  return Infinity;
+}
+
+export async function checkAndIncrementQuota(orgId?: string, orgPlan?: string, tokens: number = 0, requestId?: string): Promise<void> {
   if (!orgId) return;
-  const current = orgUsage.get(orgId) || 0;
-  const plan = orgPlan || "enterprise";
-  const limit = plan === "trial" ? 100_000 : plan === "standard" ? 1_000_000 : Infinity;
-  if (current + tokens > limit) {
-    throw new QuotaExceededError(`Organization quota exceeded for plan ${plan}. Current usage: ${current}, requested: ${tokens}, limit: ${limit}`);
+  const limit = getPlanLimit(orgPlan);
+  if (limit === Infinity) return;
+  // Idempotent: if requestId already recorded, do not double-count
+  if (requestId && process.env.DATABASE_URL) {
+    try {
+      const { prisma: p } = await import("../db/client");
+      const existing = await (p as any).$queryRawUnsafe('SELECT 1 FROM "ai_usage_logs" WHERE "orgId" = $1 AND "requestId" = $2 LIMIT 1', orgId, requestId) as unknown[];
+      if (existing.length > 0) return;
+    } catch {
+      // fall through to normal check
+    }
   }
-  orgUsage.set(orgId, current + tokens);
+  if (process.env.DATABASE_URL) {
+    const { prisma: p } = await import("../db/client");
+    // Serialize quota decision per org via advisory lock to prevent concurrent exceed
+    await (p as any).$transaction(async (tx: { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown>; $queryRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown[]> }) => {
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', orgId);
+      const rows = await tx.$queryRawUnsafe('SELECT COALESCE(SUM("totalTokens"),0)::int as sum FROM "ai_usage_logs" WHERE "orgId" = $1 AND "createdAt" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
+      const current = Number(rows[0]?.sum || 0);
+      if (current + tokens > limit) {
+        throw new QuotaExceededError(`Organization quota exceeded for plan ${orgPlan || "enterprise"}. Current monthly usage: ${current}, requested: ${tokens}, limit: ${limit}, billing period: ${new Date().toISOString().slice(0,7)}`);
+      }
+    });
+    return;
+  }
+  // Fallback Map for unit tests without DB
+  const current = orgUsageFallback.get(orgId) || 0;
+  if (current + tokens > limit) {
+    throw new QuotaExceededError(`Organization quota exceeded for plan ${orgPlan || "enterprise"}. Current usage: ${current}, requested: ${tokens}, limit: ${limit}`);
+  }
+  orgUsageFallback.set(orgId, current + tokens);
 }
 
 import { prisma as appPrisma } from "../db/client";
 
 export async function recordDurableUsage(orgId: string, model: string, promptTokens: number, completionTokens: number, cost: number, requestId?: string): Promise<void> {
+  if (!orgId) throw new Error("orgId required for usage persistence");
+  if (!requestId) throw new Error("requestId required for idempotent usage persistence (billing period: " + new Date().toISOString().slice(0,7) + ")");
   const totalTokens = promptTokens + completionTokens;
-  orgUsage.set(orgId, (orgUsage.get(orgId) || 0) + totalTokens);
-  if (process.env.DATABASE_URL && (appPrisma as any)?.aiUsageLog) {
-    try {
-      await (appPrisma as any).aiUsageLog.create({
-        data: {
-          orgId,
-          model,
-          promptTokens,
-          completionTokens,
-          totalTokens,
-          cost,
-          requestId
-        }
-      });
-    } catch {
-      // Non-blocking fallback
-    }
+  if (!process.env.DATABASE_URL) {
+    // Test fallback — still track in Map for unit tests
+    orgUsageFallback.set(orgId, (orgUsageFallback.get(orgId) || 0) + totalTokens);
+    return;
   }
+  // Idempotent insert — if requestId already exists, do not double-insert
+  const existing = await (appPrisma as unknown as { $queryRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown[]> }).$queryRawUnsafe('SELECT 1 FROM "ai_usage_logs" WHERE "orgId" = $1 AND "requestId" = $2 LIMIT 1', orgId, requestId) as unknown[];
+  if (existing.length > 0) return;
+  try {
+    await (appPrisma as unknown as { aiUsageLog: { create: (o: unknown) => Promise<unknown> } }).aiUsageLog.create({
+      data: {
+        orgId,
+        model,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        cost,
+        requestId
+      }
+    });
+  } catch (e) {
+    // Do NOT swallow — PostgreSQL is authoritative; surface failure so caller can retry
+    throw new Error(`Failed to persist AI usage: ${(e as Error).message}`);
+  }
+  // Also update fallback for in-memory readers (not authoritative)
+  orgUsageFallback.set(orgId, (orgUsageFallback.get(orgId) || 0) + totalTokens);
 }
 
-export async function generateStructuredCompletion<T>(systemInstruction: string, userPrompt: string, schema: z.ZodType<T>, config: LLMConfig = {}): Promise<T> {
+export async function generateStructuredCompletion<T>(systemInstruction: string, userPrompt: string, schema: z.ZodType<T>, config: LLMConfig & { requestId?: string } = {}): Promise<T> {
   detectPromptInjection(userPrompt); detectSSRFInInput(userPrompt);
-  checkAndIncrementQuota(config.orgId, config.orgPlan, 500);
+  const requestId = (config as { requestId?: string }).requestId || (await import("crypto")).randomUUID();
+  await checkAndIncrementQuota(config.orgId, config.orgPlan, 500, requestId);
   const systemPrompt = buildSystemPrompt(systemInstruction, schema);
   const start = Date.now();
   let invocation = await Internal.invokeLLM(systemPrompt, userPrompt, config);
@@ -84,7 +137,7 @@ export async function generateStructuredCompletion<T>(systemInstruction: string,
       const cost = (promptTokens / 1000) * inputPrice + (completionTokens / 1000) * outputPrice;
       recordAITelemetry({ model, promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, latencyMs: Date.now() - start, cost });
       if (config.orgId) {
-        void recordDurableUsage(config.orgId, model, promptTokens, completionTokens, cost);
+        await recordDurableUsage(config.orgId, model, promptTokens, completionTokens, cost, requestId);
       }
       return value;
     } catch (err) {
