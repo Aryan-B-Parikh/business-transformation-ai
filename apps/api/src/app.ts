@@ -67,9 +67,9 @@ export function createApp(): express.Express {
   v1.use(adminRoutes);
   app.use("/api/v1", v1);
 
-  // Backward-compatible internal AI route used by the legacy discovery contract.
-  // The AI router retains its authenticate middleware, so this does not expose an unauthenticated path.
-  app.use("/ai/v1", aiRoutes);
+  // Legacy discovery/AI clients use the canonical /ai/v1/* routes defined by aiRoutes.
+  // Keep the same authenticated router mounted at the root so its existing prefix is preserved.
+  app.use(aiRoutes);
 
   app.use("/api/v1", (_req, res) => res.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } }));
 
