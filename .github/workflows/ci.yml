@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Gate 1 — Repository Integrity & Build
@@ -19,11 +22,11 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run build
-      - name: Typecheck (explicit, no emit — satisfies Phase 35 gate)
+      - name: Typecheck
         run: npx tsc --noEmit --project tsconfig.base.json && npx tsc --noEmit --project apps/api/tsconfig.json && npx tsc --noEmit --project apps/web/tsconfig.json && npx tsc --noEmit --project apps/mobile/tsconfig.json
 
   test-unit:
-    name: Gate 2a — Unit Tests (Monorepo, no infra)
+    name: Gate 2a — Unit Tests
     needs: [validate]
     runs-on: ubuntu-latest
     steps:
@@ -35,11 +38,10 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: npm test --workspaces --if-present
-      - name: API unit tests (in-memory repos only)
-        run: cd apps/api && npx vitest run tests/*.test.ts --exclude "**/e2e/**" --exclude "**/*.e2e.test.ts"
+      - run: cd apps/api && npx vitest run tests/*.test.ts --exclude "**/e2e/**" --exclude "**/*.e2e.test.ts"
 
   test-integration:
-    name: Gate 2b — Integration Tests (Postgres + MinIO + Parser)
+    name: Gate 2b — Integration Tests
     needs: [validate]
     runs-on: ubuntu-latest
     services:
@@ -51,7 +53,7 @@ jobs:
           POSTGRES_DB: bta_test
         ports: [5432:5432]
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U postgres -d bta_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
       minio:
         image: minio/minio:latest
@@ -74,28 +76,36 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
-      - name: Create bta_app role (least privilege, NOSUPERUSER NOBYPASSRLS — mirrors docker/init-test-db.sql)
+      - name: Configure restricted application role after migrations
         env:
           PGPASSWORD: postgres
         run: |
-          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=0 <<'SQL'
-          DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='bta_app') THEN CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF; END $$;
+          set -euo pipefail
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bta_app') THEN
+              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+            ELSE
+              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+            END IF;
+          END $$;
           REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
           GRANT CONNECT ON DATABASE bta_test TO bta_app;
-          GRANT USAGE, CREATE ON SCHEMA public TO bta_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bta_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
+          REVOKE CREATE ON SCHEMA public FROM bta_app;
+          GRANT USAGE ON SCHEMA public TO bta_app;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;
           SQL
-          psql -h localhost -U postgres -d bta_test -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;" || true
-          psql -h localhost -U postgres -d bta_test -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;" || true
-      - name: Create MinIO bucket (single container, alias+mb atomically)
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname='bta_app' AND rolsuper=false AND rolbypassrls=false;" | grep bta_app
+      - name: Create MinIO bucket
         run: |
           docker run --rm --network host minio/mc:latest sh -c '
             mc alias set local http://localhost:9000 minioadmin minioadmin &&
             mc mb --ignore-existing local/bta-storage-test &&
             mc anonymous set none local/bta-storage-test
           '
-      - name: Run integration + PRD matrix + RLS (hermetic — no parser, parser tests are in E2E)
+      - name: Run integration, PRD and RLS tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
@@ -106,12 +116,10 @@ jobs:
           S3_ACCESS_KEY_ID: minioadmin
           S3_SECRET_ACCESS_KEY: minioadmin
           S3_FORCE_PATH_STYLE: "true"
-        run: |
-          cd apps/api
-          npx vitest run tests/prd-coverage.test.ts tests/rls.test.ts tests/crossTenantAttack.test.ts tests/concurrency-artifact.test.ts
+        run: cd apps/api && npx vitest run tests/prd-coverage.test.ts tests/rls.test.ts tests/crossTenantAttack.test.ts tests/concurrency-artifact.test.ts
 
   test-security:
-    name: Gate 4 — Security, Dependencies & Secrets (Strict)
+    name: Gate 4 — Security, Dependencies & Secrets
     needs: [validate]
     runs-on: ubuntu-latest
     steps:
@@ -123,12 +131,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Dependency Security Audit (strict, fails CI on high+)
+      - name: Dependency Security Audit
         run: npm audit --audit-level=high
       - name: Dependency review
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@v4
-      - name: Secret scan (strict, fails CI on any leak)
+      - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -145,18 +153,23 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Start Infrastructure (deterministic: postgres → minio → bucket → parser → api → worker)
+      - name: Start Infrastructure
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
-        run: |
-          docker compose -f docker-compose.test.yml up -d --wait
-          docker compose -f docker-compose.test.yml ps -a
+        run: docker compose -f docker-compose.test.yml up -d --wait
       - name: Verify Migrations
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
-      - name: Run E2E & True Golden Path Tests
+      - name: Re-apply restricted role grants after migrations
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
+      - name: Run E2E and Golden Path
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
@@ -172,6 +185,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
         run: |
+          set -euo pipefail
           cd apps/api
           npx vitest run tests/e2e/
           npx vitest run tests/goldenPath.e2e.test.ts
@@ -192,7 +206,7 @@ jobs:
           POSTGRES_DB: bta_test
         ports: [5432:5432]
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U postgres -d bta_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
@@ -202,34 +216,39 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Migrate and seed test DB (consistent with E2E — exact least privilege per docker/init-test-db.sql)
+      - name: Migrate and configure restricted role
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
+          PGPASSWORD: postgres
         run: |
+          set -euo pipefail
           cd apps/api
           npx prisma migrate deploy
-          # Create restricted bta_app exactly as docker/init-test-db.sql — least privilege, NOSUPERUSER, NOBYPASSRLS, no GRANT ALL
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=0 <<'SQL'
-          DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='bta_app') THEN CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF; END $$;
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bta_app') THEN
+              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+            ELSE
+              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+            END IF;
+          END $$;
           REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
           GRANT CONNECT ON DATABASE bta_test TO bta_app;
-          GRANT USAGE, CREATE ON SCHEMA public TO bta_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bta_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
+          REVOKE CREATE ON SCHEMA public FROM bta_app;
+          GRANT USAGE ON SCHEMA public TO bta_app;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;
           SQL
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;" || true
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;" || true
-      - name: Run load + DR tests (SLO p95 < 200ms, worker restart survival)
+      - name: Run load and DR tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
           STORAGE_BACKEND: postgres
-        run: |
-          cd apps/api
-          npx vitest run tests/load.test.ts tests/disasterRecovery.test.ts tests/outboxWorker.test.ts
+        run: cd apps/api && npx vitest run tests/load.test.ts tests/disasterRecovery.test.ts tests/outboxWorker.test.ts
 
   release-gate:
-    name: 10/10 Enterprise Release Gate (requires all mandatory gates)
+    name: 10/10 Enterprise Release Gate
     needs: [test-unit, test-integration, test-security, test-e2e, test-load]
     runs-on: ubuntu-latest
     steps:
@@ -240,28 +259,38 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Start Live Infrastructure for strict verification
+      - name: Start Live Infrastructure
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
         run: |
           docker compose -f docker-compose.test.yml up -d --wait
           docker compose -f docker-compose.test.yml ps -a
-          # Wait for API ready
-          for i in $(seq 1 30); do curl -sf http://localhost:3000/readyz && break || sleep 2; done
-          curl -sf http://localhost:9000/minio/health/live || echo "MinIO not yet ready"
-      - name: Verify Migrations on live DB
+      - name: Verify Migrations and Runtime Role
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
-        run: cd apps/api && npx prisma migrate deploy
-      - name: Strict 10/10 verification — live infra required, no fallback
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          cd apps/api
+          npx prisma migrate deploy
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "SELECT rolname FROM pg_roles WHERE rolname='bta_app' AND rolsuper=false AND rolbypassrls=false;" | grep bta_app
+      - name: Strict release verification
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
+          STORAGE_BACKEND: postgres
           S3_ENDPOINT: http://localhost:9000
+          S3_REGION: us-east-1
+          S3_BUCKET: bta-storage-test
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_FORCE_PATH_STYLE: "true"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
-        run: npx tsx scripts/verify-release-gate.ts --strict
+        run: npx tsx apps/api/scripts/verify-release-gate.ts --strict
       - name: Teardown
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
