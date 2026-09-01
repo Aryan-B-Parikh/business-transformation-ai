@@ -97,10 +97,68 @@ export async function generateStructuredCompletion<T>(systemInstruction: string,
   throw new AIValidationError(`Failed to validate LLM output after bounded repair attempts: ${String((lastError as Error)?.message || lastError)}`);
 }
 
+function isGeminiConfigured(): boolean {
+  return Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+}
+function getGeminiKey(): string | undefined {
+  return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+}
+function normalizeGeminiModel(model: string): string {
+  if (!model || model.includes("gpt")) return "gemini-1.5-flash";
+  if (model === "gemini-3.7-flash" || model === "gemini-3.7" || model.includes("3.7")) return "gemini-1.5-flash";
+  if (model.startsWith("gemini-")) return model;
+  return "gemini-1.5-flash";
+}
+async function invokeGemini(systemPrompt: string, userPrompt: string, config: LLMConfig): Promise<Invocation> {
+  const apiKey = getGeminiKey()!;
+  const model = normalizeGeminiModel(config.model || "gemini-1.5-flash");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 30000);
+  try {
+    const useBearer = apiKey.startsWith("AQ.") || apiKey.startsWith("ya29.");
+    const url = useBearer
+      ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+      : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (useBearer) headers["Authorization"] = `Bearer ${apiKey}`;
+    else headers["x-goog-api-key"] = apiKey;
+    const combinedPrompt = `${systemPrompt}\n\n---\nUser:\n${userPrompt}\n\nReturn ONLY valid JSON per schema, no markdown.`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: combinedPrompt }] }],
+        generationConfig: { temperature: config.temperature ?? 0.2, maxOutputTokens: config.maxTokens ?? 2000, responseMimeType: "application/json" }
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Gemini invocation failed: ${response.status} ${await response.text()}`);
+    const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("No content returned from Gemini");
+    // Strip markdown fences if present
+    const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    return { content: cleaned, promptTokens: data.usageMetadata?.promptTokenCount, completionTokens: data.usageMetadata?.candidatesTokenCount };
+  } catch (err) {
+    if ((err as Error)?.name === "AbortError") throw new LLMTimeoutError(`Gemini request timed out after ${config.timeoutMs ?? 30000}ms`);
+    throw err;
+  } finally { clearTimeout(timeout); }
+}
+
 export const Internal = {
   async invokeLLM(systemPrompt: string, userPrompt: string, config: LLMConfig): Promise<Invocation> {
+  const geminiKey = getGeminiKey();
+  const openAiKey = process.env.OPENAI_API_KEY;
+  const provider = (process.env.LLM_PROVIDER || (geminiKey ? "gemini" : openAiKey ? "openai" : "")).toLowerCase();
+  if (provider === "gemini" || (geminiKey && !openAiKey)) {
+    if (!geminiKey) {
+      if (process.env.NODE_ENV === "test") throw new Error("Missing mock implementation for invokeLLM in tests.");
+      throw new Error("GEMINI_API_KEY is not configured.");
+    }
+    return invokeGemini(systemPrompt, userPrompt, config);
+  }
   const model = config.model || "gpt-4o-mini";
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = openAiKey;
   if (!apiKey) {
     if (process.env.NODE_ENV === "test") {
       throw new Error("Missing mock implementation for invokeLLM in tests.");

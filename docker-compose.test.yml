@@ -102,6 +102,10 @@ services:
       - PARSER_SANDBOX_URL=http://parser-sandbox:8080/parse
       - PORT=3000
       - NODE_ENV=test
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_API_KEY=${GEMINI_API_KEY:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     ports:
       - "3000:3000"
     depends_on:
@@ -137,6 +141,10 @@ services:
       - S3_SECRET_ACCESS_KEY=minioadmin
       - S3_FORCE_PATH_STYLE=true
       - NODE_ENV=test
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_API_KEY=${GEMINI_API_KEY:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
