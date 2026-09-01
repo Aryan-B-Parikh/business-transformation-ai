@@ -44,8 +44,10 @@ function fileContains(rel: string, needle: string): boolean {
   return readFileSafe(rel).includes(needle);
 }
 
+const isStrict = process.argv.includes("--strict");
+
 console.log("=================================================");
-console.log("   10/10 ENTERPRISE RELEASE GATE VERIFICATION   ");
+console.log(`   10/10 ENTERPRISE RELEASE GATE VERIFICATION ${isStrict ? "(STRICT — live infra required)" : ""}   `);
 console.log("=================================================");
 
 (async () => {
@@ -118,77 +120,108 @@ console.log("=================================================");
   })();
 
   // ─────────────────────────────────────────────────────────────────────
-  // GATE 4: PostgreSQL RLS — verify tenant isolation on real DB or via migration file
+  // GATE 4: PostgreSQL RLS — verify tenant isolation on real DB (strict: must probe live)
   // ─────────────────────────────────────────────────────────────────────
   await (async () => {
     const dbUrl = process.env.DATABASE_URL || process.env.DATABASE_ADMIN_URL;
-    // First try live probe if DB url present; otherwise verify via migration file
     const migrationRls = readFileSafe("apps/api/prisma/migrations/20260830000001_rls/migration.sql");
     const hasRlsInMigration = /ENABLE ROW LEVEL SECURITY|CREATE POLICY/i.test(migrationRls);
     if (!dbUrl) {
+      if (isStrict) {
+        results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: false, detail: "STRICT: DATABASE_URL required for live RLS probe — no fallback allowed" });
+        return;
+      }
       results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: hasRlsInMigration, detail: hasRlsInMigration ? "RLS verified via migration (no live DB in this env)" : "Missing RLS in migration" });
       return;
     }
     try {
       const out = execSync(
-        `docker compose --profile setup -f docker-compose.test.yml exec -T postgres psql -U bta_app -d bta_test -tAc "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('projects','artifacts','document_chunks','conversations','audit_logs') AND rowsecurity=true;"`,
+        `docker compose -f docker-compose.test.yml exec -T postgres psql -U bta_app -d bta_test -tAc "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('projects','artifacts','document_chunks','conversations','audit_logs') AND rowsecurity=true;"`,
         { cwd: rootDir, encoding: "utf-8", timeout: 30000 }
       ).trim();
       const tables = out.split("\n").filter(Boolean);
       const expected = ["projects", "artifacts", "document_chunks", "conversations", "audit_logs"];
       const missing = expected.filter(t => !tables.includes(t));
       if (missing.length === 0) {
-        results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: true, detail: `RLS enabled on ${tables.length}/${expected.length} tables` });
-      } else if (hasRlsInMigration) {
+        results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: true, detail: `RLS enabled on ${tables.length}/${expected.length} tables (live)` });
+      } else if (!isStrict && hasRlsInMigration) {
         results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: true, detail: `RLS verified via migration (live probe missing ${missing.join(",")})` });
       } else {
-        results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: false, detail: `Missing RLS: ${missing.join(", ")}` });
+        results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: false, detail: `Missing RLS live: ${missing.join(", ")}` });
       }
-    } catch {
-      results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: hasRlsInMigration, detail: hasRlsInMigration ? "RLS verified via migration (live probe failed)" : `Probe failed and no migration` });
+    } catch (e) {
+      if (isStrict) {
+        results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: false, detail: `STRICT: live RLS probe failed — ${(e as Error).message}` });
+      } else {
+        results.push({ id: 4, name: "PostgreSQL RLS Isolation", passed: hasRlsInMigration, detail: hasRlsInMigration ? "RLS verified via migration (live probe failed)" : `Probe failed and no migration` });
+      }
     }
   })();
 
   // ─────────────────────────────────────────────────────────────────────
-  // GATE 5: MinIO object storage — bucket exists + signed URL works
+  // GATE 5: MinIO object storage — bucket exists + signed URL works (strict: must probe live)
   // ─────────────────────────────────────────────────────────────────────
   await (async () => {
     const compose = readFileSafe("docker-compose.test.yml");
     const hasMinio = /minio/i.test(compose);
     const hasBucket = /bta-storage|create-bucket/i.test(compose);
-    // Try live probe if curl available, otherwise verify via compose
+    let livePassed = false;
+    let liveDetail = "";
     try {
-      // Use node fetch instead of curl for Windows compatibility
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 5000);
       const s3Endpoint = process.env.S3_ENDPOINT || "http://localhost:9000";
       const res = await fetch(s3Endpoint + "/minio/health/live", { signal: controller.signal } as RequestInit).catch(() => null);
       clearTimeout(t);
       if (res && (res.status === 200 || res.status === 403)) {
-        results.push({ id: 5, name: "MinIO Object Storage", passed: true, detail: `Bucket reachable via live probe (HTTP ${res.status})` });
-        return;
+        livePassed = true;
+        liveDetail = `Bucket reachable via live probe (HTTP ${res.status})`;
+      } else if (res) {
+        liveDetail = `MinIO health returned ${res.status}`;
+      } else {
+        liveDetail = "MinIO live probe no response";
       }
-    } catch { /* fallback */ }
-    results.push({ id: 5, name: "MinIO Object Storage", passed: hasMinio && hasBucket, detail: hasMinio && hasBucket ? "MinIO + bucket verified via compose (no live probe in this env)" : "Missing MinIO/bucket in compose" });
+    } catch (e) {
+      liveDetail = `MinIO probe error: ${(e as Error).message}`;
+    }
+    if (livePassed) {
+      results.push({ id: 5, name: "MinIO Object Storage", passed: true, detail: liveDetail });
+    } else if (isStrict) {
+      results.push({ id: 5, name: "MinIO Object Storage", passed: false, detail: `STRICT: ${liveDetail} — no fallback allowed` });
+    } else {
+      results.push({ id: 5, name: "MinIO Object Storage", passed: hasMinio && hasBucket, detail: hasMinio && hasBucket ? `MinIO + bucket verified via compose (${liveDetail})` : "Missing MinIO/bucket in compose" });
+    }
   })();
 
   // ─────────────────────────────────────────────────────────────────────
-  // GATE 6: Worker durability — workers start and survive a process signal
+  // GATE 6: Worker durability — workers start and survive a process signal (strict: must probe live)
   // ─────────────────────────────────────────────────────────────────────
   await (async () => {
     const compose = readFileSafe("docker-compose.test.yml");
     const hasWorker = /worker/i.test(compose);
     const hasApi = /api:/i.test(compose);
     const hasRestartPolicy = /restart:/i.test(compose);
+    let livePassed = false;
+    let liveDetail = "";
     try {
-      const out = execSync(`docker compose --profile setup -f docker-compose.test.yml ps --format json 2>&1`, { cwd: rootDir, encoding: "utf-8", timeout: 15000 }).trim();
+      const out = execSync(`docker compose -f docker-compose.test.yml ps --format json 2>&1`, { cwd: rootDir, encoding: "utf-8", timeout: 15000 }).trim();
       const hasRunning = /worker|api/i.test(out) && /running/i.test(out);
       if (hasRunning) {
-        results.push({ id: 6, name: "Worker Durability & Restart", passed: true, detail: "Worker + API running (live probe)" });
-        return;
+        livePassed = true;
+        liveDetail = "Worker + API running (live probe)";
+      } else {
+        liveDetail = `Compose ps did not show running worker/api: ${out.slice(0, 120)}`;
       }
-    } catch { /* fallback to compose check */ }
-    results.push({ id: 6, name: "Worker Durability & Restart", passed: hasWorker && hasApi, detail: hasWorker && hasApi ? `Worker + API verified via compose (restart=${hasRestartPolicy})` : "Missing worker/api in compose" });
+    } catch (e) {
+      liveDetail = `ps probe failed: ${(e as Error).message.slice(0, 120)}`;
+    }
+    if (livePassed) {
+      results.push({ id: 6, name: "Worker Durability & Restart", passed: true, detail: liveDetail });
+    } else if (isStrict) {
+      results.push({ id: 6, name: "Worker Durability & Restart", passed: false, detail: `STRICT: ${liveDetail} — no fallback allowed` });
+    } else {
+      results.push({ id: 6, name: "Worker Durability & Restart", passed: hasWorker && hasApi, detail: hasWorker && hasApi ? `Worker + API verified via compose (restart=${hasRestartPolicy}, live: ${liveDetail})` : "Missing worker/api in compose" });
+    }
   })();
 
   // ─────────────────────────────────────────────────────────────────────
@@ -318,7 +351,7 @@ console.log("=================================================");
     }
     const c = readFileSafe(".github/workflows/ci.yml");
     const issues: string[] = [];
-    if (c.includes("|| echo")) issues.push("npm audit || echo");
+    if (/npm audit.*\|\| echo/.test(c)) issues.push("npm audit || echo");
     if (c.includes("continue-on-error: true")) issues.push("continue-on-error: true");
     if (!/npm audit --audit-level=(high|critical)/.test(c)) issues.push("missing high+ audit level");
     if (!/gitleaks/g.test(c)) issues.push("missing gitleaks");

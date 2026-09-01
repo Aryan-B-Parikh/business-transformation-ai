@@ -128,10 +128,10 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Start Infrastructure
+      - name: Start Infrastructure (deterministic: postgres → minio → bucket → parser → api → worker)
         run: |
           docker compose -f docker-compose.test.yml up -d --wait
-          docker compose -f docker-compose.test.yml --profile setup up minio-create-bucket
+          docker compose -f docker-compose.test.yml ps -a
       - name: Verify Migrations
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
@@ -190,8 +190,8 @@ jobs:
           npx vitest run tests/load.test.ts tests/disasterRecovery.test.ts tests/outboxWorker.test.ts
 
   release-gate:
-    name: 10/10 Enterprise Release Gate
-    needs: [test-e2e]
+    name: 10/10 Enterprise Release Gate (requires all mandatory gates)
+    needs: [test-unit, test-integration, test-security, test-e2e, test-load]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -200,4 +200,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npx tsx scripts/verify-release-gate.ts
+      - run: npm run build
+      - name: Start Live Infrastructure for strict verification
+        run: |
+          docker compose -f docker-compose.test.yml up -d --wait
+          docker compose -f docker-compose.test.yml ps -a
+          # Wait for API ready
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/readyz && break || sleep 2; done
+          curl -sf http://localhost:9000/minio/health/live || echo "MinIO not yet ready"
+      - name: Verify Migrations on live DB
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
+        run: cd apps/api && npx prisma migrate deploy
+      - name: Strict 10/10 verification — live infra required, no fallback
+        env:
+          DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
+          DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
+          S3_ENDPOINT: http://localhost:9000
+        run: npx tsx scripts/verify-release-gate.ts --strict
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v
