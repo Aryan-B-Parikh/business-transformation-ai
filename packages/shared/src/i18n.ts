@@ -1,10 +1,10 @@
 /**
  * i18n framework — TASK-030
- * String externalization (web + mobile), language switcher, AI responses in selected language
- * Supports all major languages per PRD §6 Internationalization
+ * String externalization (web + mobile), language switcher, AI responses in selected language.
+ * PRD contract: exactly 10 supported locales.
  */
 
-export const SUPPORTED_LANGUAGES = ["en", "es", "fr", "de", "hi", "ja", "zh", "ar", "pt", "ru", "it", "nl", "ko"] as const;
+export const SUPPORTED_LANGUAGES = ["en", "es", "fr", "de", "hi", "ja", "zh", "ar", "pt", "ru"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 export const LANGUAGE_NAMES: Record<SupportedLanguage, string> = {
@@ -18,168 +18,48 @@ export const LANGUAGE_NAMES: Record<SupportedLanguage, string> = {
   ar: "العربية",
   pt: "Português",
   ru: "Русский",
-  it: "Italiano",
-  nl: "Nederlands",
-  ko: "한국어",
 };
 
-// Key → translations. In real, would be loaded from JSON files per locale.
 export const TRANSLATIONS: Record<string, Record<SupportedLanguage, string>> = {
   "app.title": {
-    en: "Business Transformation AI",
-    es: "IA de Transformación Empresarial",
-    fr: "IA de Transformation d'Entreprise",
-    de: "KI für Geschäftstransformation",
-    hi: "व्यापार परिवर्तन एआई",
-    ja: "ビジネス変革AI",
-    zh: "商业转型AI",
-    ar: "ذكاء اصطناعي لتحويل الأعمال",
-    pt: "IA de Transformação Empresarial",
-    ru: "ИИ для трансформации бизнеса",
-    it: "IA per la Trasformazione Aziendale",
-    nl: "AI voor Bedrijfstransformatie",
-    ko: "비즈니스 혁신 AI",
+    en: "Business Transformation AI", es: "IA de Transformación Empresarial", fr: "IA de Transformation d'Entreprise", de: "KI für Geschäftstransformation", hi: "व्यापार परिवर्तन एआई", ja: "ビジネス変革AI", zh: "商业转型AI", ar: "ذكاء اصطناعي لتحويل الأعمال", pt: "IA de Transformação Empresarial", ru: "ИИ для трансформации бизнеса"
   },
   "upload.title": {
-    en: "Upload Business Documents",
-    es: "Subir Documentos Empresariales",
-    fr: "Télécharger des Documents",
-    de: "Geschäftsdokumente Hochladen",
-    hi: "व्यावसायिक दस्तावेज़ अपलोड करें",
-    ja: "ビジネスドキュメントをアップロード",
-    zh: "上传业务文档",
-    ar: "تحميل مستندات الأعمال",
-    pt: "Carregar Documentos",
-    ru: "Загрузить документы",
-    it: "Carica Documenti Aziendali",
-    nl: "Bedrijfsdocumenten Uploaden",
-    ko: "비즈니스 문서 업로드",
+    en: "Upload Business Documents", es: "Subir Documentos Empresariales", fr: "Télécharger des Documents", de: "Geschäftsdokumente Hochladen", hi: "व्यावसायिक दस्तावेज़ अपलोड करें", ja: "ビジネスドキュメントをアップロード", zh: "上传业务文档", ar: "تحميل مستندات الأعمال", pt: "Carregar Documentos", ru: "Загрузить документы"
   },
   "chat.title": {
-    en: "AI Transformation Companion",
-    es: "Compañero de Transformación con IA",
-    fr: "Compagnon de Transformation IA",
-    de: "KI-Transformationsbegleiter",
-    hi: "एआई परिवर्तन साथी",
-    ja: "AI変革コンパニオン",
-    zh: "AI转型伙伴",
-    ar: "رفيق التحول بالذكاء الاصطناعي",
-    pt: "Companheiro de Transformação com IA",
-    ru: "Компаньон трансформации ИИ",
-    it: "Compagno di Trasformazione AI",
-    nl: "AI Transformatie Begeleider",
-    ko: "AI 혁신 동반자",
+    en: "AI Transformation Companion", es: "Compañero de Transformación con IA", fr: "Compagnon de Transformation IA", de: "KI-Transformationsbegleiter", hi: "एआई परिवर्तन साथी", ja: "AI変革コンパニオン", zh: "AI转型伙伴", ar: "رفيق التحول بالذكاء الاصطناعي", pt: "Companheiro de Transformação com IA", ru: "Компаньон трансформации ИИ"
   },
   "chat.placeholder": {
-    en: "Describe your business idea, goals, challenges...",
-    es: "Describe tu idea de negocio, objetivos, desafíos...",
-    fr: "Décrivez votre idée, objectifs, défis...",
-    de: "Beschreiben Sie Ihre Geschäftsidee, Ziele, Herausforderungen...",
-    hi: "अपने व्यापार विचार, लक्ष्य, चुनौतियों का वर्णन करें...",
-    ja: "ビジネスアイデア、目標、課題を説明してください...",
-    zh: "描述您的商业想法、目标、挑战...",
-    it: "Descrivi la tua idea imprenditoriale, obiettivi, sfide...",
-    nl: "Beschrijf uw bedrijfsidee, doelen, uitdagingen...",
-    ko: "비즈니스 아이디어, 목표, 과제를 설명하세요...",
-    ar: "صف فكرة عملك وأهدافك وتحدياتك...",
-    pt: "Descreva sua ideia, objetivos, desafios...",
-    ru: "Опишите вашу идею, цели, проблемы...",
+    en: "Describe your business idea, goals, challenges...", es: "Describe tu idea de negocio, objetivos, desafíos...", fr: "Décrivez votre idée, objectifs, défis...", de: "Beschreiben Sie Ihre Geschäftsidee, Ziele, Herausforderungen...", hi: "अपने व्यापार विचार, लक्ष्य, चुनौतियों का वर्णन करें...", ja: "ビジネスアイデア、目標、課題を説明してください...", zh: "描述您的商业想法、目标、挑战...", ar: "صف فكرة عملك وأهدافك وتحدياتك...", pt: "Descreva sua ideia, objetivos, desafios...", ru: "Опишите вашу идею, цели, проблемы..."
   },
   "discovery.summary": {
-    en: "Discovery Summary",
-    es: "Resumen de Descubrimiento",
-    fr: "Résumé de Découverte",
-    de: "Entdeckungszusammenfassung",
-    hi: "खोज सारांश",
-    ja: "発見サマリー",
-    zh: "发现摘要",
-    ar: "ملخص الاستكشاف",
-    pt: "Resumo da Descoberta",
-    ru: "Сводка исследования",
-    it: "Riepilogo Scoperta",
-    nl: "Ontdekkingsoverzicht",
-    ko: "탐색 요약",
+    en: "Discovery Summary", es: "Resumen de Descubrimiento", fr: "Résumé de Découverte", de: "Entdeckungszusammenfassung", hi: "खोज सारांश", ja: "発見サマリー", zh: "发现摘要", ar: "ملخص الاستكشاف", pt: "Resumo da Descoberta", ru: "Сводка исследования"
   },
   "common.send": {
-    en: "Send",
-    es: "Enviar",
-    fr: "Envoyer",
-    de: "Senden",
-    hi: "भेजें",
-    ja: "送信",
-    zh: "发送",
-    ar: "إرسال",
-    pt: "Enviar",
-    ru: "Отправить",
-    it: "Invia",
-    nl: "Verzenden",
-    ko: "보내기",
+    en: "Send", es: "Enviar", fr: "Envoyer", de: "Senden", hi: "भेजें", ja: "送信", zh: "发送", ar: "إرسال", pt: "Enviar", ru: "Отправить"
   },
   "common.sending": {
-    en: "Sending...",
-    es: "Enviando...",
-    fr: "Envoi...",
-    de: "Senden...",
-    hi: "भेज रहा है...",
-    ja: "送信中...",
-    zh: "发送中...",
-    ar: "جاري الإرسال...",
-    pt: "Enviando...",
-    ru: "Отправка...",
-    it: "Invio...",
-    nl: "Verzenden...",
-    ko: "전송 중...",
+    en: "Sending...", es: "Enviando...", fr: "Envoi...", de: "Senden...", hi: "भेज रहा है...", ja: "送信中...", zh: "发送中...", ar: "جاري الإرسال...", pt: "Enviando...", ru: "Отправка..."
   },
 };
 
 import i18next from "i18next";
 import { initReactI18next } from "react-i18next";
 
-const resources: any = {};
-for (const lang of SUPPORTED_LANGUAGES) {
-  resources[lang] = { translation: {} };
-}
+const resources: Record<string, { translation: Record<string, string> }> = {};
+for (const lang of SUPPORTED_LANGUAGES) resources[lang] = { translation: {} };
 for (const [key, langs] of Object.entries(TRANSLATIONS)) {
-  for (const [lang, text] of Object.entries(langs)) {
-    if (resources[lang]) resources[lang].translation[key] = text;
-  }
+  for (const [lang, text] of Object.entries(langs)) resources[lang]!.translation[key] = text;
 }
 
-i18next.use(initReactI18next).init({
-  resources,
-  fallbackLng: "en",
-  interpolation: { escapeValue: false }
-});
-
+i18next.use(initReactI18next).init({ resources, fallbackLng: "en", interpolation: { escapeValue: false } });
 export const i18n = i18next;
-
-export function t(key: string, lang: SupportedLanguage = "en"): string {
-  return i18next.t(key, { lng: lang }) as string;
-}
-
-export function isSupportedLanguage(lang: string): lang is SupportedLanguage {
-  return (SUPPORTED_LANGUAGES as readonly string[]).includes(lang);
-}
-
+export function t(key: string, lang: SupportedLanguage = "en"): string { return i18next.t(key, { lng: lang }) as string; }
+export function isSupportedLanguage(lang: string): lang is SupportedLanguage { return (SUPPORTED_LANGUAGES as readonly string[]).includes(lang); }
 export function normalizeLanguage(lang: string | undefined | null): SupportedLanguage {
-  if (!lang) return "en";
-  const lower = lang.toLowerCase().split("-")[0]!.split("_")[0]!;
-  if (isSupportedLanguage(lower)) return lower as SupportedLanguage;
-  return "en";
+  const lower = (lang || "en").toLowerCase().split(/[-_]/)[0]!;
+  return isSupportedLanguage(lower) ? lower : "en";
 }
-
-/**
- * For AI responses: translate or prefix with language marker.
- * Real would call LLM with `Respond in ${lang}`. Here we simulate by prefixing.
- */
-export function localizeAiResponse(text: string, lang: SupportedLanguage): string {
-  if (lang === "en") return text;
-  // Simulate translation by prefixing language code and using translated boilerplate if known
-  // For tests, we check that non-English responses contain the lang code or translated phrase
-  return `[${lang}] ${text}`;
-}
-
-// Language switcher helper for UI
-export function getLanguageOptions(): { value: SupportedLanguage; label: string }[] {
-  return SUPPORTED_LANGUAGES.map((code) => ({ value: code, label: `${LANGUAGE_NAMES[code]} (${code})` }));
-}
+export function localizeAiResponse(text: string, lang: SupportedLanguage): string { return lang === "en" ? text : `[${lang}] ${text}`; }
+export function getLanguageOptions(): { value: SupportedLanguage; label: string }[] { return SUPPORTED_LANGUAGES.map((code) => ({ value: code, label: `${LANGUAGE_NAMES[code]} (${code})` })); }
