@@ -19,7 +19,7 @@ jobs:
       - run: npm run build
 
   test-unit:
-    name: Gate 2 — Unit Tests (Monorepo)
+    name: Gate 2a — Unit Tests (Monorepo, no infra)
     needs: [validate]
     runs-on: ubuntu-latest
     steps:
@@ -28,7 +28,64 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      - run: npm test --workspaces --if-present
+      - name: API unit tests (in-memory repos only)
+        run: cd apps/api && npx vitest run tests/*.test.ts --exclude "**/e2e/**" --exclude "**/*.e2e.test.ts"
+
+  test-integration:
+    name: Gate 2b — Integration Tests (Postgres + MinIO + Parser)
+    needs: [validate]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bta_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports: [9000:9000]
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm run build
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
+        run: cd apps/api && npx prisma migrate deploy
+      - name: Create MinIO bucket
+        run: |
+          docker run --rm --network host minio/mc:latest \
+            alias set local http://localhost:9000 minioadmin minioadmin && \
+            docker run --rm --network host minio/mc:latest mb --ignore-existing local/bta-storage-test
+      - name: Run integration + PRD matrix + RLS
+        env:
+          DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
+          DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
+          STORAGE_BACKEND: postgres
+          S3_ENDPOINT: http://localhost:9000
+          S3_REGION: us-east-1
+          S3_BUCKET: bta-storage-test
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_FORCE_PATH_STYLE: "true"
+          PARSER_SANDBOX_URL: http://localhost:8080/parse
+        run: |
+          cd apps/api
+          npx vitest run tests/prd-coverage.test.ts tests/rls.test.ts tests/crossTenantAttack.test.ts tests/concurrency-artifact.test.ts
 
   test-integration:
     name: Gate 3 — Integration & PRD Matrix
@@ -43,7 +100,7 @@ jobs:
       - run: cd apps/api && npx vitest run tests/prd-coverage.test.ts tests/rls.test.ts
 
   test-security:
-    name: Gate 4 — Security, Dependencies & Secrets
+    name: Gate 4 — Security, Dependencies & Secrets (Strict)
     needs: [validate]
     runs-on: ubuntu-latest
     steps:
@@ -53,16 +110,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      - name: Dependency Security Audit
-        run: npm audit --audit-level=critical || echo "Audit completed with ecosystem advisories"
+      - name: Dependency Security Audit (strict, fails CI on high+)
+        run: npm audit --audit-level=high
       - name: Dependency review
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@v4
-      - name: Secret scan
+      - name: Secret scan (strict, fails CI on any leak)
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
 
   test-e2e:
     name: Gate 5 — True Golden Path, RLS & E2E Verification
@@ -102,6 +158,36 @@ jobs:
       - name: Teardown Infrastructure
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
+
+  test-load:
+    name: Gate 6 — Load, SLO & DR Verification
+    needs: [test-unit, test-integration]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bta_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm run build
+      - name: Run load + DR tests (SLO p95 < 200ms, worker restart survival)
+        env:
+          DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
+          DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
+          STORAGE_BACKEND: postgres
+        run: |
+          cd apps/api
+          npx vitest run tests/load.test.ts tests/disasterRecovery.test.ts tests/outboxWorker.test.ts
 
   release-gate:
     name: 10/10 Enterprise Release Gate

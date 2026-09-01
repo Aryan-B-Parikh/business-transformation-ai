@@ -401,19 +401,40 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
 
         if (format === "pdf") {
           expect(buffer.slice(0, 4).toString()).toBe("%PDF");
+          // PDF must contain project/artifact textual content, not just magic bytes
+          const pdfText = buffer.toString("utf8");
+          expect(pdfText).toMatch(/Business Transformation AI|Executive Summary|Artifact|Project/);
+          // Ensure artifact title appears in PDF when available
+          if (mainArtifact.title) expect(pdfText).toContain(mainArtifact.title.slice(0, 12));
         } else {
-          // Deep validation of OpenXML structures using JSZip
+          // Deep validation of OpenXML structures using JSZip — verify ZIP + XML + project content
           const zip = await JSZip.loadAsync(buffer);
           if (format === "docx") {
+            const contentTypes = await zip.file("[Content_Types].xml")?.async("string");
+            expect(contentTypes).toBeDefined();
+            expect(contentTypes).toContain("word/document.xml");
             const docXml = await zip.file("word/document.xml")?.async("string");
             expect(docXml).toBeDefined();
             expect(docXml).toContain("<w:body>");
+            // Project content must be inside document.xml
+            expect(docXml).toMatch(new RegExp(mainArtifact.type.slice(0, 8) + "|" + mainArtifact.title.slice(0, 10) + "|Business Transformation"));
           } else if (format === "xlsx") {
             const workbookXml = await zip.file("xl/workbook.xml")?.async("string");
             expect(workbookXml).toBeDefined();
+            expect(workbookXml).toContain("<workbook");
+            const sheet1 = await zip.file("xl/worksheets/sheet1.xml")?.async("string");
+            expect(sheet1).toBeDefined();
+            expect(sheet1).toContain("<worksheet");
+            // Verify project data present in sheet
+            expect(sheet1).toMatch(/Business|Artifact|Roadmap|Project/);
           } else if (format === "pptx") {
             const presXml = await zip.file("ppt/presentation.xml")?.async("string");
             expect(presXml).toBeDefined();
+            expect(presXml).toContain("<p:presentation");
+            const slide1 = await zip.file("ppt/slides/slide1.xml")?.async("string");
+            expect(slide1).toBeDefined();
+            expect(slide1).toContain("<p:sld");
+            expect(slide1).toMatch(/Business|Artifact|Project/);
           }
         }
       }
