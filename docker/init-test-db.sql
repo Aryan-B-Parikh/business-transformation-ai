@@ -1,5 +1,5 @@
--- Create the restricted application role for the application to use
-CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password';
+-- Create the restricted application role for the application to use — least privilege, no superuser, no bypassrls
+CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 
 -- Revoke all by default to be safe
 REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;

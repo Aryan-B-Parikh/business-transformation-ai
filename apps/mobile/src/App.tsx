@@ -149,6 +149,7 @@ export function MobileApp({
   const [dashboard, setDashboard] = React.useState<{ scores?: Record<string, number>; counts?: Record<string, number> } | null>(null);
   const [docStatus, setDocStatus] = React.useState<string | null>(null);
   const [notifications, setNotifications] = React.useState<Array<{ id: string; type: string; message: string; read: boolean }>>([]);
+  const [activeTab, setActiveTab] = React.useState<"chat" | "workspaces" | "artifacts" | "dashboard" | "notifications">("chat");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -568,7 +569,18 @@ export function MobileApp({
       </SafeView>
 
       <SafeView testID="chat-section" style={{ flex: isTablet ? 2 : 1, marginTop: isTablet ? 0 : 12 }}>
-        <SafeText style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>{t("chat.title", lang) || "AI Discovery & Transformation"}</SafeText>
+        <SafeView testID="bottom-tabs" style={{ flexDirection: "row", justifyContent: "space-around", paddingVertical: 6, borderBottomWidth: 1, borderColor: "#e4e4e7", marginBottom: 8 }}>
+          <SafeButton testID="tab-chat" title="Chat" onPress={() => setActiveTab("chat")} color={activeTab === "chat" ? "#2563eb" : "#6b7280"} />
+          <SafeButton testID="tab-workspaces" title="Workspaces" onPress={() => setActiveTab("workspaces")} color={activeTab === "workspaces" ? "#2563eb" : "#6b7280"} />
+          <SafeButton testID="tab-artifacts" title="Artifacts" onPress={() => setActiveTab("artifacts")} color={activeTab === "artifacts" ? "#2563eb" : "#6b7280"} />
+          <SafeButton testID="tab-dashboard" title="Dashboard" onPress={() => setActiveTab("dashboard")} color={activeTab === "dashboard" ? "#2563eb" : "#6b7280"} />
+          <SafeButton testID="tab-notifications" title="Notifications" onPress={() => setActiveTab("notifications")} color={activeTab === "notifications" ? "#2563eb" : "#6b7280"} />
+        </SafeView>
+        {activeTab === "chat" ? <SafeText style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>{t("chat.title", lang) || "AI Discovery & Transformation"}</SafeText> : null}
+        {activeTab === "workspaces" ? <SafeText style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>Workspaces & Projects</SafeText> : null}
+        {activeTab === "artifacts" ? <SafeText style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>Artifacts & Viewer</SafeText> : null}
+        {activeTab === "dashboard" ? <SafeText style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>Dashboard</SafeText> : null}
+        {activeTab === "notifications" ? <SafeText style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}>Notifications</SafeText> : null}
 
         <SafeScrollView style={{ flex: 1, minHeight: 160, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 6, padding: 8, marginBottom: 8 }}>
           {messages.length === 0 ? (

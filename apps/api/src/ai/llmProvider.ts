@@ -86,32 +86,46 @@ export async function checkAndIncrementQuota(orgId?: string, orgPlan?: string, t
 
 import { prisma as appPrisma } from "../db/client";
 
-export async function recordDurableUsage(orgId: string, model: string, promptTokens: number, completionTokens: number, cost: number, requestId?: string): Promise<void> {
+export async function recordDurableUsage(orgId: string, model: string, promptTokens: number, completionTokens: number, cost: number, requestId?: string, orgPlan?: string): Promise<void> {
   if (!orgId) throw new Error("orgId required for usage persistence");
   if (!requestId) throw new Error("requestId required for idempotent usage persistence (billing period: " + new Date().toISOString().slice(0,7) + ")");
   const totalTokens = promptTokens + completionTokens;
+  const pricingVersion = "2026-01";
   if (!process.env.DATABASE_URL) {
     // Test fallback — still track in Map for unit tests
     orgUsageFallback.set(orgId, (orgUsageFallback.get(orgId) || 0) + totalTokens);
     return;
   }
-  // Idempotent insert — if requestId already exists, do not double-insert
-  const existing = await (appPrisma as unknown as { $queryRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown[]> }).$queryRawUnsafe('SELECT 1 FROM "ai_usage_logs" WHERE "orgId" = $1 AND "requestId" = $2 LIMIT 1', orgId, requestId) as unknown[];
-  if (existing.length > 0) return;
+  // Authoritative single transaction: lock, idempotency, quota check, insert with pricingVersion
+  const limit = getPlanLimit(orgPlan);
   try {
-    await (appPrisma as unknown as { aiUsageLog: { create: (o: unknown) => Promise<unknown> } }).aiUsageLog.create({
-      data: {
-        orgId,
-        model,
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        cost,
-        requestId
+    await (appPrisma as unknown as { $transaction: (fn: (tx: unknown) => Promise<void>) => Promise<void> }).$transaction(async (tx: unknown) => {
+      const p = tx as unknown as { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown>; $queryRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown[]>; aiUsageLog: { create: (o: unknown) => Promise<unknown> } };
+      await p.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', orgId);
+      const existing = await p.$queryRawUnsafe('SELECT 1 FROM "ai_usage_logs" WHERE "orgId" = $1 AND "requestId" = $2 LIMIT 1', orgId, requestId) as unknown[];
+      if (existing.length > 0) return;
+      if (limit !== Infinity) {
+        const rows = await p.$queryRawUnsafe('SELECT COALESCE(SUM("totalTokens"),0)::int as sum FROM "ai_usage_logs" WHERE "orgId" = $1 AND "createdAt" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
+        const current = Number(rows[0]?.sum || 0);
+        if (current + totalTokens > limit) {
+          throw new QuotaExceededError(`Organization quota exceeded for plan ${orgPlan || "enterprise"}. Current monthly usage: ${current}, requested: ${totalTokens}, limit: ${limit}, billing period: ${new Date().toISOString().slice(0,7)}, pricingVersion: ${pricingVersion}`);
+        }
       }
+      await p.aiUsageLog.create({
+        data: {
+          orgId,
+          model,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          cost,
+          requestId,
+          pricingVersion
+        }
+      });
     });
   } catch (e) {
-    // Do NOT swallow — PostgreSQL is authoritative; surface failure so caller can retry
+    if (e instanceof QuotaExceededError) throw e;
     throw new Error(`Failed to persist AI usage: ${(e as Error).message}`);
   }
   // Also update fallback for in-memory readers (not authoritative)
@@ -137,7 +151,7 @@ export async function generateStructuredCompletion<T>(systemInstruction: string,
       const cost = (promptTokens / 1000) * inputPrice + (completionTokens / 1000) * outputPrice;
       recordAITelemetry({ model, promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, latencyMs: Date.now() - start, cost });
       if (config.orgId) {
-        await recordDurableUsage(config.orgId, model, promptTokens, completionTokens, cost, requestId);
+        await recordDurableUsage(config.orgId, model, promptTokens, completionTokens, cost, requestId, config.orgPlan);
       }
       return value;
     } catch (err) {

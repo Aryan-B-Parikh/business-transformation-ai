@@ -74,11 +74,27 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
-      - name: Create MinIO bucket
+      - name: Create bta_app role (least privilege, NOSUPERUSER NOBYPASSRLS — mirrors docker/init-test-db.sql)
+        env:
+          PGPASSWORD: postgres
         run: |
-          docker run --rm --network host minio/mc:latest \
-            alias set local http://localhost:9000 minioadmin minioadmin && \
-            docker run --rm --network host minio/mc:latest mb --ignore-existing local/bta-storage-test
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=0 <<'SQL'
+          DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='bta_app') THEN CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF; END $$;
+          REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
+          GRANT CONNECT ON DATABASE bta_test TO bta_app;
+          GRANT USAGE, CREATE ON SCHEMA public TO bta_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bta_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
+          SQL
+          psql -h localhost -U postgres -d bta_test -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;" || true
+          psql -h localhost -U postgres -d bta_test -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;" || true
+      - name: Create MinIO bucket (single container, alias+mb atomically)
+        run: |
+          docker run --rm --network host minio/mc:latest sh -c '
+            mc alias set local http://localhost:9000 minioadmin minioadmin &&
+            mc mb --ignore-existing local/bta-storage-test &&
+            mc anonymous set none local/bta-storage-test
+          '
       - name: Run integration + PRD matrix + RLS (hermetic — no parser, parser tests are in E2E)
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
@@ -186,17 +202,23 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Migrate and seed test DB (consistent with E2E)
+      - name: Migrate and seed test DB (consistent with E2E — exact least privilege per docker/init-test-db.sql)
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: |
           cd apps/api
           npx prisma migrate deploy
-          # Create restricted bta_app role for RLS tests (mirrors docker/init-test-db.sql)
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=0 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='bta_app') THEN CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE; END IF; END \$\$;" || true
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT ALL ON DATABASE bta_test TO bta_app;" || true
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT ALL ON SCHEMA public TO bta_app;" || true
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO bta_app;" || true
+          # Create restricted bta_app exactly as docker/init-test-db.sql — least privilege, NOSUPERUSER, NOBYPASSRLS, no GRANT ALL
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=0 <<'SQL'
+          DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='bta_app') THEN CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF; END $$;
+          REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
+          GRANT CONNECT ON DATABASE bta_test TO bta_app;
+          GRANT USAGE, CREATE ON SCHEMA public TO bta_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bta_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
+          SQL
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;" || true
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;" || true
       - name: Run load + DR tests (SLO p95 < 200ms, worker restart survival)
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public

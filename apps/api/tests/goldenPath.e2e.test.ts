@@ -89,17 +89,24 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
       }
     }
 
-    // 1.2 Token Refresh Rotation
-    if (refreshToken) {
-      const refreshRes = await request(app)
-        .post("/api/v1/auth/refresh")
-        .set("x-refresh-token", refreshToken)
-        .send({ refreshToken });
-      if (refreshRes.status === 200 && refreshRes.body.token) {
-        token = refreshRes.body.token;
-      }
-      // If refresh fails, continue with original token (best-effort)
-    }
+    // 1.2 Token Refresh Rotation — strict: must succeed, old refresh invalidated, new works
+    expect(refreshToken).toBeDefined();
+    const refreshRes = await request(app)
+      .post("/api/v1/auth/refresh")
+      .set("x-refresh-token", refreshToken)
+      .send({ refreshToken });
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body.token).toBeDefined();
+    const newToken = refreshRes.body.token;
+    const newRefresh = refreshRes.body.refreshToken || refreshRes.body.refreshTokenBody || refreshToken;
+    // Old refresh must now be invalid
+    const oldReuseRes = await request(app).post("/api/v1/auth/refresh").send({ refreshToken });
+    expect([401, 403]).toContain(oldReuseRes.status);
+    // New refresh must work
+    const newRefreshRes = await request(app).post("/api/v1/auth/refresh").set("x-refresh-token", newRefresh).send({ refreshToken: newRefresh });
+    expect(newRefreshRes.status).toBe(200);
+    expect(newRefreshRes.body.token).toBeDefined();
+    token = newRefreshRes.body.token;
 
     // 1.3 Key Discovery
     const jwksRes = await request(app).get("/.well-known/jwks.json");
@@ -200,21 +207,14 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
       docId
     );
     expect(embeddingRows[0]?.has_embedding).toBe(true);
-    // RAG → verify pgvector similarity search returns our chunk for a query matching document text
+    // RAG → verify pgvector similarity search returns our chunk for a query matching document text — strict, no DB fallback
     const ragProbe = await request(app)
       .post(`/api/v1/projects/${projectId}/rag/search`)
       .set("Authorization", `Bearer ${token}`)
       .send({ query: "Oracle 11g monolithic Java", k: 3 });
-    // RAG endpoint may be /rag/search via documents route; if 404, verify via direct DB vector search
-    if (ragProbe.status === 200) {
-      expect(ragProbe.body.results.length).toBeGreaterThan(0);
-      expect(ragProbe.body.results[0].chunkText).toBeDefined();
-    } else {
-      const vecRow = await prisma.$queryRawUnsafe<Array<{ chunk_text: string }>>(
-        `SELECT chunk_text FROM document_chunks WHERE document_id = $1::uuid LIMIT 1`,
-        docId
-      );
-      expect(vecRow[0]?.chunk_text).toContain("Oracle");
+    expect(ragProbe.status).toBe(200);
+    expect(ragProbe.body.results.length).toBeGreaterThan(0);
+    expect(ragProbe.body.results[0].chunkText).toBeDefined();
     }
   }, 60000);
 

@@ -73,13 +73,14 @@ export async function extractText(buffer:Buffer,filename:string){
   if (process.env.TEST_SLOW_PARSER) {
     await new Promise((r) => setTimeout(r, Number(process.env.TEST_SLOW_PARSER)));
   }
+  const allowFallback = process.env.ALLOW_PARSER_FALLBACK === "true";
   const l=filename.toLowerCase();
   if(l.endsWith(".pdf")){
     if (process.env.PARSER_SANDBOX_URL) {
       try {
         return {text: await parseRemote(buffer, filename, "application/pdf"), pages: 1};
       } catch (err) {
-        if (process.env.NODE_ENV === "production") throw err;
+        if (!allowFallback) throw err;
         return extractPdf(buffer);
       }
     }
@@ -90,7 +91,7 @@ export async function extractText(buffer:Buffer,filename:string){
       try {
         return {text: await parseRemote(buffer, filename, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), pages: 1};
       } catch (err) {
-        if (process.env.NODE_ENV === "production") throw err;
+        if (!allowFallback) throw err;
         return extractDocx(buffer);
       }
     }
