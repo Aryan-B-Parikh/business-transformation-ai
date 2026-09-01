@@ -215,7 +215,6 @@ describe("True Golden Path E2E (Full Lifecycle Acceptance Suite)", () => {
     expect(ragProbe.status).toBe(200);
     expect(ragProbe.body.results.length).toBeGreaterThan(0);
     expect(ragProbe.body.results[0].chunkText).toBeDefined();
-    }
   }, 60000);
 
   it("4. Conversation & RAG Discovery with Mandatory Non-Empty Citations", async () => {

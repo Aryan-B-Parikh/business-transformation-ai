@@ -12,6 +12,7 @@ import { URL } from "url";
 import { routeAgent, buildArtifact, SERVICE_NAME, SERVICE_VERSION } from "./index";
 import { retrieveRag } from "../api/src/services/rag";
 import { generateStructuredCompletion } from "../api/src/ai/llmProvider";
+import { z } from "zod";
 
 const PORT = Number(process.env.AI_ORCHESTRATOR_PORT || 7070);
 const SERVICE_TOKEN = process.env.AI_ORCHESTRATOR_SERVICE_TOKEN || "";
@@ -65,7 +66,7 @@ const server = http.createServer(async (req, res) => {
         systemPrompt,
         userPrompt,
         // permissive schema — orchestrator doesn't enforce artifact-specific shapes here
-        require("zod").z.object({}).passthrough(),
+        z.object({}).passthrough(),
         { model: "gpt-4o-mini", orgId: parsed.orgId }
       );
       const artifact = buildArtifact(agent, content as Record<string, unknown>);

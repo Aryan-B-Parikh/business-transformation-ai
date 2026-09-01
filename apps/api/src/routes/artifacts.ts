@@ -302,10 +302,14 @@ router.get(
     const all = await getRepositories().artifacts.listByProject(orgId, art.projectId);
     // Build chain from root to leaf via parent_id
     let rootId: string | null = art.id;
-    while (true) {
+    let hasParent = true;
+    while (hasParent) {
       const cur = all.find((x) => x.id === rootId);
-      if (cur?.parent_id) rootId = cur.parent_id;
-      else break;
+      if (cur?.parent_id) {
+        rootId = cur.parent_id;
+      } else {
+        hasParent = false;
+      }
     }
     const chain: typeof all = [];
     let curId: string | null = rootId;
