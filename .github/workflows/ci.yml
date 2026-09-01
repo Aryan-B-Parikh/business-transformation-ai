@@ -129,6 +129,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - name: Start Infrastructure (deterministic: postgres → minio → bucket → parser → api → worker)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_PROVIDER: gemini
         run: |
           docker compose -f docker-compose.test.yml up -d --wait
           docker compose -f docker-compose.test.yml ps -a
@@ -149,6 +152,8 @@ jobs:
           S3_FORCE_PATH_STYLE: "true"
           PARSER_SANDBOX_URL: http://localhost:8080/parse
           API_URL: http://localhost:3000
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_PROVIDER: gemini
         run: |
           cd apps/api
           npx vitest run tests/e2e/
@@ -202,6 +207,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - name: Start Live Infrastructure for strict verification
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_PROVIDER: gemini
         run: |
           docker compose -f docker-compose.test.yml up -d --wait
           docker compose -f docker-compose.test.yml ps -a
@@ -217,6 +225,8 @@ jobs:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
           S3_ENDPOINT: http://localhost:9000
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_PROVIDER: gemini
         run: npx tsx scripts/verify-release-gate.ts --strict
       - name: Teardown
         if: always()
