@@ -2,7 +2,7 @@
   "name": "@bta/mobile",
   "version": "0.1.0",
   "private": true,
-  "description": "Mobile app shell — Android/iOS (React Native) per 05_AGENT_TASK_BACKLOG.md TASK-029",
+  "description": "Expo native mobile client for Business Transformation AI",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -25,8 +25,11 @@
     "react-native-web": "~0.19.12"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^14.2.1",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "rimraf": "^5.0.5",
     "typescript": "^5.3.3",
     "vitest": "^1.6.1"
