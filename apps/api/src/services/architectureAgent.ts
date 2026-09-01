@@ -60,7 +60,9 @@ export async function generateArchitecture(req: ArchitectureRequest): Promise<{ 
   const isHld = req.type === "architecture_hld";
 
   let content: ArchitectureContent;
-  const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true";
+  const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
   const historyText = (req.conversationHistory || []).map((m) => `${m.role}: ${m.content}`).join("\n").slice(0, 4000);
   const grounding = await getGroundingContext(req.orgId, req.projectId, historyText || `${req.type} ${cloud}`, 5);
   if (useLLM) {

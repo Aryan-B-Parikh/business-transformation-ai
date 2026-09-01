@@ -43,7 +43,7 @@ function deterministicProcess(name: string): ProcessContent {
 export async function generateProcess(req: ProcessRequest): Promise<{ artifactId: string; content: ProcessContent }> {
   const name = req.params?.processName || "Order to Cash";
   let content: ProcessContent;
-  const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY); const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true"; const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
   const grounding = await getGroundingContext(req.orgId, req.projectId, `process workflow ${name}`, 5);
   if (useLLM) {
     try { content = await generateStructuredCompletion(`You are a Process Intelligence Designer. Generate BPMN workflow for ${name}. Return structured JSON only.`, `Generate BPMN workflow, approval workflows, decision trees for ${name}.${grounding.contextBlock}`, ProcessLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicProcess(name); }

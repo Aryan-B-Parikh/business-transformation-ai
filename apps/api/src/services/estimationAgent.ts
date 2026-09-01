@@ -59,7 +59,7 @@ export async function generateEstimation(req: EstimationRequest): Promise<{ arti
 
   const estimateIds: string[] = [];
   
-  if (process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === "test" && !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY && process.env.FORCE_LIVE_LLM !== "true") {
     return { artifactId: artifact.id, content, estimateIds: ["mock-est-1", "mock-est-2"] };
   }
 

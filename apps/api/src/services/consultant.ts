@@ -54,7 +54,9 @@ export type ValidateIdeaResponse =
 export function validateIdea(req: ValidateIdeaRequest): ValidateIdeaResponse { return heuristic(req); }
 
 export async function validateIdeaLLM(req: ValidateIdeaRequest & { orgId?: string; projectId?: string }): Promise<ValidateIdeaResponse> {
-  const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true";
+  const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
   if (!useLLM) return heuristic(req);
   let grounding = { contextBlock: "", citations: [] as unknown[] };
   if (req.orgId && (req as { projectId?: string }).projectId) {

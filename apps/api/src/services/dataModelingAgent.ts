@@ -44,7 +44,9 @@ function deterministicDataModel(domain: string): DataModelingContent {
 export async function generateDataModel(req: DataModelingRequest): Promise<{ artifactId: string; content: DataModelingContent }> {
   const domain = req.params?.domain || "Order";
   let content: DataModelingContent;
-  const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true";
+  const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
   const grounding = await getGroundingContext(req.orgId, req.projectId, `data model ${domain}`, 5);
   if (useLLM) {
     try { content = await generateStructuredCompletion(`You are a Database & Integration Designer. Generate ER diagram, DDL, and OpenAPI for domain ${domain}. Return structured JSON only.`, `Generate data model for domain ${domain}.${grounding.contextBlock}`, DataModelLLMSchema, { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicDataModel(domain); }
@@ -88,7 +90,9 @@ function deterministicApiSpec(domain: string): ApiSpecContent {
 export async function generateApiSpec(req: DataModelingRequest): Promise<{ artifactId: string; content: ApiSpecContent }> {
   const domain = req.params?.domain || "Order";
   let content: ApiSpecContent;
-  const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const hasLlmKey2 = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  const allowLiveInTest2 = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true";
+  const useLLM = hasLlmKey2 && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest2);
   const grounding = await getGroundingContext(req.orgId, req.projectId, `api spec ${domain}`, 5);
   if (useLLM) {
     try { content = await generateStructuredCompletion(`You are an API Designer. Generate OpenAPI 3.0 spec for domain ${domain}. Return structured JSON only.`, `Generate API spec for domain ${domain}.${grounding.contextBlock}`, z.object({ openapi: z.string(), info: z.object({ title: z.string(), version: z.string() }), paths: z.record(z.unknown()) }), { model: "gpt-4o-mini", orgId: req.orgId }); } catch { content = deterministicApiSpec(domain); }

@@ -61,7 +61,7 @@ export async function generateBusinessAnalysis(req: BusinessAnalysisRequest): Pr
 
   let content: any;
 
-  if (process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === "test" && !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY && process.env.FORCE_LIVE_LLM !== "true") {
     content = {
       gapAnalysis: {
         current: "Manual order-to-cash with Excel tracking",

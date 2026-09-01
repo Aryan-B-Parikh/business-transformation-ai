@@ -43,7 +43,7 @@ function deterministicUx(appType: string): UxContent {
 export async function generateUx(req: UxRequest): Promise<{ artifactId: string; content: UxContent }> {
   const appType = req.params?.appType || "Dashboard";
   let content: UxContent;
-  const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
+  const hasLlmKey = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY); const allowLiveInTest = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) || process.env.FORCE_LIVE_LLM === "true"; const useLLM = hasLlmKey && process.env.LLM_PROVIDER !== "mock" && (process.env.NODE_ENV !== "test" || allowLiveInTest);
   const grounding = await getGroundingContext(req.orgId, req.projectId, `ux wireframe ${appType}`, 5);
   if (useLLM) {
     try {
