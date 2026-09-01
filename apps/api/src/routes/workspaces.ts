@@ -61,8 +61,30 @@ const router = Router();
 router.get("/workspaces", authenticate, authorize(...RBAC.listWorkspaces), async (req: AuthedRequest, res: Response) => {
   try {
     const orgId = req.user!.orgId;
+    const role = req.user!.role as UserRole;
     const all = await getRepositories().projects.listWorkspaces(orgId);
-    const { data, page, pageSize, total } = paginate(all, req);
+    let filtered = all;
+    // Project-scoped RBAC: non-admins only see workspaces where they have project membership
+    if (role !== "org_admin" && role !== "workspace_admin") {
+      const repos = getRepositories();
+      const visibleWsIds = new Set<string>();
+      for (const ws of all) {
+        try {
+          const projects = await repos.projects.listProjectsByWorkspace(orgId, ws.id);
+          for (const p of projects) {
+            const members = await repos.projects.listMembers(orgId, p.id).catch(() => []);
+            if (members.length === 0 || members.some((m) => m.userId === req.user!.userId)) {
+              visibleWsIds.add(ws.id);
+              break;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+      filtered = all.filter((w) => visibleWsIds.has(w.id));
+    }
+    const { data, page, pageSize, total } = paginate(filtered, req);
     res.json({ data, page, page_size: pageSize, total });
   } catch (e) {
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: (e as Error).message } });

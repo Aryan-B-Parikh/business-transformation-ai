@@ -56,7 +56,7 @@ export function initializeProductionRuntime(): void {
       throw new Error("CRITICAL SECURITY VIOLATION: production requires JWT_ISSUER and JWT_AUDIENCE");
     }
     if (!process.env.WEBHOOK_SIGNING_SECRET || process.env.WEBHOOK_SIGNING_SECRET.length < 16) {
-      console.warn("[core-api] WARNING: WEBHOOK_SIGNING_SECRET not set or too short — webhook delivery will fail until configured");
+      throw new Error("CRITICAL SECURITY VIOLATION: production requires WEBHOOK_SIGNING_SECRET >=16 chars");
     }
   }
 

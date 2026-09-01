@@ -134,10 +134,36 @@ export function renderToSvg(spec: DiagramSpec, opts: RenderOptions = {}): string
   return svg;
 }
 
+export async function renderToPng(spec: DiagramSpec, opts: RenderOptions = {}): Promise<Buffer> {
+  const svg = renderToSvg(spec, opts);
+  try {
+    // @ts-ignore - sharp is optional native dep, fallback to SVG if unavailable
+    const sharp = await import("sharp");
+    const png = await (sharp.default || (sharp as unknown as { default: unknown }) as { default: (buf: Buffer) => { png: () => { toBuffer: () => Promise<Buffer> } } }).default(Buffer.from(svg)).png().toBuffer();
+    return png;
+  } catch {
+    return Buffer.from(svg, "utf8");
+  }
+}
+
 export function renderToPngPlaceholder(spec: DiagramSpec): Buffer {
-  // For v1 we return SVG as buffer; real PNG would use sharp/canvas
+  // Backwards compat — now delegates to SVG; real PNG via renderToPng
   const svg = renderToSvg(spec);
   return Buffer.from(svg, "utf8");
+}
+
+export async function renderToPngOrSvg(spec: DiagramSpec, opts: RenderOptions = {}): Promise<{ buffer: Buffer; mime: string }> {
+  const svg = renderToSvg(spec, opts);
+  try {
+    // @ts-ignore - sharp is optional native dep, fallback to SVG if unavailable
+    const sharp = await import("sharp");
+    const png = await (sharp.default || (sharp as unknown as { default: unknown }) as { default: (buf: Buffer) => { png: () => { toBuffer: () => Promise<Buffer> } } }).default(Buffer.from(svg)).png().toBuffer();
+    // Validate PNG magic bytes
+    if (png.slice(0, 8).toString("hex").startsWith("89504e47")) return { buffer: png, mime: "image/png" };
+  } catch {
+    // fall through to SVG
+  }
+  return { buffer: Buffer.from(svg, "utf8"), mime: "image/svg+xml" };
 }
 
 function truncate(s: string, n: number): string { return s.length > n ? s.slice(0, n - 1) + "…" : s; }

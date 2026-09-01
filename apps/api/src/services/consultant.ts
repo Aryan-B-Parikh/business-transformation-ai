@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { generateStructuredCompletion } from "../ai/llmProvider";
 import { localizeAiResponse } from "@bta/shared";
+import { getGroundingContext } from "./ragGrounding";
 
 export const ConsultantLLMSchema = z.object({
   type: z.enum(["clarifying_questions", "recommendations"]),
@@ -52,13 +53,17 @@ export type ValidateIdeaResponse =
 
 export function validateIdea(req: ValidateIdeaRequest): ValidateIdeaResponse { return heuristic(req); }
 
-export async function validateIdeaLLM(req: ValidateIdeaRequest & { orgId?: string }): Promise<ValidateIdeaResponse> {
+export async function validateIdeaLLM(req: ValidateIdeaRequest & { orgId?: string; projectId?: string }): Promise<ValidateIdeaResponse> {
   const useLLM = process.env.OPENAI_API_KEY && process.env.LLM_PROVIDER !== "mock" && process.env.NODE_ENV !== "test";
   if (!useLLM) return heuristic(req);
+  let grounding = { contextBlock: "", citations: [] as unknown[] };
+  if (req.orgId && (req as { projectId?: string }).projectId) {
+    try { grounding = await getGroundingContext(req.orgId, (req as { projectId: string }).projectId, req.idea, 5); } catch { /* ignore */ }
+  }
   try {
     const result = await generateStructuredCompletion(
-      "You are an AI Business Consultant. Validate ideas, ask clarifying questions when vague (<80 chars or vague words), otherwise give feasibility high/medium/low, recommendations, best practices, and Microsoft stack (Power Automate/Azure). Return structured JSON only. Use user's lang for text.",
-      `Idea: ${req.idea}\nContext: ${JSON.stringify(req.context || {})}\nLang: ${req.lang || "en"}`,
+      "You are an AI Business Consultant. Validate ideas, ask clarifying questions when vague (<80 chars or vague words), otherwise give feasibility high/medium/low, recommendations, best practices, and Microsoft stack (Power Automate/Azure). Return structured JSON only. Use user's lang for text. Use RAG context if provided.",
+      `Idea: ${req.idea}\nContext: ${JSON.stringify(req.context || {})}\nLang: ${req.lang || "en"}${grounding.contextBlock}`,
       ConsultantLLMSchema,
       { model: "gpt-4o-mini", orgId: req.orgId }
     );
