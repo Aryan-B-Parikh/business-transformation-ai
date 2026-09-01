@@ -1,6 +1,6 @@
 import * as React from "react";
 import { View, Text, TextInput, Button, ActivityIndicator, Dimensions, ScrollView } from "react-native";
-import { API_BASE, SupportedLanguage, t } from "@bta/shared";
+import { API_BASE, SupportedLanguage, SUPPORTED_LANGUAGES, LANGUAGE_NAMES, t } from "@bta/shared";
 import * as SecureStoreNative from "expo-secure-store";
 
 // Typed wrappers to satisfy React 19 + react-native type divergence (strict typing)
@@ -148,6 +148,7 @@ export function MobileApp({
   const [artifacts, setArtifacts] = React.useState<Array<{ id: string; type: string; title: string; status: string; version: number }>>([]);
   const [dashboard, setDashboard] = React.useState<{ scores?: Record<string, number>; counts?: Record<string, number> } | null>(null);
   const [docStatus, setDocStatus] = React.useState<string | null>(null);
+  const [notifications, setNotifications] = React.useState<Array<{ id: string; type: string; message: string; read: boolean }>>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -189,7 +190,7 @@ export function MobileApp({
   // JWT lifecycle helpers
   // ------------------------------------------------------------------
   const performRefresh = React.useCallback(async (currentRefresh: string): Promise<{ accessToken: string; refreshToken?: string; expiresIn?: number } | null> => {
-    const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken: currentRefresh }),
@@ -265,7 +266,7 @@ export function MobileApp({
     setLoading(true);
     setError(null);
     try {
-      const res = (await request("/api/v1/auth/login", {
+      const res = (await request("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       })) as { token?: string; accessToken?: string; refreshToken?: string; refreshTokenBody?: string; expiresIn?: number };
@@ -290,7 +291,7 @@ export function MobileApp({
     const currentRefresh = refreshToken || (await SecureStore.getItemAsync(REFRESH_TOKEN_KEY));
     if (currentRefresh) {
       try {
-        await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ refreshToken: currentRefresh }),
@@ -312,7 +313,7 @@ export function MobileApp({
     setError(null);
     try {
       const authHeader: Record<string, string> = overrideToken ? { Authorization: `Bearer ${overrideToken}` } : {};
-      const res = (await request("/api/v1/workspaces", { headers: authHeader })) as { data?: WorkspaceItem[] } | WorkspaceItem[];
+      const res = (await request("/workspaces", { headers: authHeader })) as { data?: WorkspaceItem[] } | WorkspaceItem[];
       const list: WorkspaceItem[] = Array.isArray(res) ? res : (res.data ?? []);
       setWorkspaces(list);
       if (list.length > 0) await loadProjectsForWorkspace(list[0].id, overrideToken);
@@ -329,7 +330,7 @@ export function MobileApp({
     setError(null);
     try {
       const authHeader: Record<string, string> = overrideToken ? { Authorization: `Bearer ${overrideToken}` } : {};
-      const res = (await request(`/api/v1/workspaces/${workspaceId}/projects`, { headers: authHeader })) as { data?: ProjectItem[] } | ProjectItem[];
+      const res = (await request(`/workspaces/${workspaceId}/projects`, { headers: authHeader })) as { data?: ProjectItem[] } | ProjectItem[];
       const list: ProjectItem[] = Array.isArray(res) ? res : (res.data ?? []);
       setProjects(list);
       if (list.length > 0 && !selectedProjectId) setSelectedProjectId(list[0].id);
@@ -344,7 +345,7 @@ export function MobileApp({
   const loadArtifacts = async (): Promise<void> => {
     if (!selectedProjectId) return;
     try {
-      const res = (await request(`/api/v1/projects/${selectedProjectId}/artifacts`)) as { data?: Array<{ id: string; type: string; title: string; status: string; version: number }> } | Array<{ id: string; type: string; title: string; status: string; version: number }>;
+      const res = (await request(`/projects/${selectedProjectId}/artifacts`)) as { data?: Array<{ id: string; type: string; title: string; status: string; version: number }> } | Array<{ id: string; type: string; title: string; status: string; version: number }>;
       const list = Array.isArray(res) ? res : (res.data ?? []);
       setArtifacts(list);
     } catch (err: unknown) {
@@ -356,8 +357,19 @@ export function MobileApp({
   const loadDashboard = async (): Promise<void> => {
     if (!selectedProjectId) return;
     try {
-      const res = (await request(`/api/v1/projects/${selectedProjectId}/dashboard`)) as { scores?: Record<string, number>; counts?: Record<string, number> };
+      const res = (await request(`/projects/${selectedProjectId}/dashboard`)) as { scores?: Record<string, number>; counts?: Record<string, number> };
       setDashboard(res);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+    }
+  };
+
+  const loadNotifications = async (): Promise<void> => {
+    try {
+      const res = (await request("/notifications")) as { data?: Array<{ id: string; type: string; message: string; read: boolean }> } | Array<{ id: string; type: string; message: string; read: boolean }>;
+      const list = Array.isArray(res) ? res : (res.data ?? []);
+      setNotifications(list);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -401,7 +413,7 @@ export function MobileApp({
         // React Native FormData file descriptor
         const fileDescriptor: unknown = { uri: fileUri, name: fileName ?? "document", type: mimeType ?? "application/octet-stream" };
         (form as unknown as { append: (k: string, v: unknown, name?: string) => void }).append("file", fileDescriptor as Blob, fileName ?? "document");
-        const uploadRes = await fetch(`${API_BASE_URL}/api/v1/projects/${selectedProjectId}/documents`, {
+        const uploadRes = await fetch(`${API_BASE_URL}/projects/${selectedProjectId}/documents`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: form as unknown as BodyInit,
@@ -414,7 +426,7 @@ export function MobileApp({
         const form = new FormData();
         const blob = new Blob(["Document upload via mobile client"], { type: "text/plain" });
         (form as unknown as { append: (k: string, v: unknown, name?: string) => void }).append("file", blob as unknown as Blob, "mobile-document.txt");
-        const uploadRes = await fetch(`${API_BASE_URL}/api/v1/projects/${selectedProjectId}/documents`, {
+        const uploadRes = await fetch(`${API_BASE_URL}/projects/${selectedProjectId}/documents`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: form as unknown as BodyInit,
@@ -440,14 +452,14 @@ export function MobileApp({
     try {
       let convId = activeConversationId;
       if (!convId) {
-        const convRes = (await request(`/api/v1/projects/${selectedProjectId}/conversations`, {
+        const convRes = (await request(`/projects/${selectedProjectId}/conversations`, {
           method: "POST",
           body: JSON.stringify({ title: "Mobile Discovery" }),
         })) as { id: string };
         convId = convRes.id;
         setActiveConversationId(convId);
       }
-      const msgRes = (await request(`/api/v1/conversations/${convId}/messages`, {
+      const msgRes = (await request(`/conversations/${convId}/messages`, {
         method: "POST",
         body: JSON.stringify({ content }),
       })) as { id?: string; content?: string; reply?: string; citations?: Array<{ documentId: string; chunkText: string }> };
@@ -504,6 +516,17 @@ export function MobileApp({
           ) : (
             <SafeButton testID="logout-button" title="Sign Out" onPress={handleLogout} color="#ef4444" />
           )}
+        </SafeView>
+
+        <SafeView testID="language-switcher" style={{ padding: 8, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 6, marginBottom: 12 }}>
+          <SafeText style={{ fontWeight: "bold", marginBottom: 4 }}>Language: {LANGUAGE_NAMES[lang]} ({lang})</SafeText>
+          <SafeScrollView horizontal style={{ flexDirection: "row" }}>
+            {SUPPORTED_LANGUAGES.map((l) => (
+              <SafeView key={l} style={{ marginRight: 6 }}>
+                <SafeButton title={`${LANGUAGE_NAMES[l as SupportedLanguage]} (${l})`} onPress={() => setLang(l as SupportedLanguage)} color={l === lang ? "#2563eb" : "#6b7280"} />
+              </SafeView>
+            ))}
+          </SafeScrollView>
         </SafeView>
 
         {token ? (
@@ -625,6 +648,26 @@ export function MobileApp({
               No dashboard loaded.
             </SafeText>
           )}
+        </SafeView>
+
+        <SafeView testID="notification-section" style={{ marginTop: 12, padding: 8, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 6 }}>
+          <SafeText style={{ fontWeight: "bold", marginBottom: 4 }}>Notifications</SafeText>
+          <SafeButton testID="load-notifications-button" title="Load Notifications" onPress={() => void loadNotifications()} disabled={!token} />
+          {notifications.map((n) => (
+            <SafeText key={n.id} testID="notification-item" style={{ fontSize: 12, paddingVertical: 2 }}>
+              • {n.type}: {n.message} {n.read ? "(read)" : "(unread)"}
+            </SafeText>
+          ))}
+          {notifications.length === 0 ? (
+            <SafeText testID="no-notifications" style={{ fontSize: 12, color: "#71717a" }}>
+              No notifications loaded.
+            </SafeText>
+          ) : null}
+        </SafeView>
+
+        <SafeView testID="artifact-viewer" style={{ marginTop: 12, padding: 8, borderWidth: 1, borderColor: "#e4e4e7", borderRadius: 6 }}>
+          <SafeText style={{ fontWeight: "bold", marginBottom: 4 }}>Artifact Viewer (Collaboration)</SafeText>
+          <SafeText style={{ fontSize: 12, color: "#475569" }}>Select an artifact to view comments and approvals. Viewer supports version history and tablet split-pane.</SafeText>
         </SafeView>
       </SafeView>
     </SafeView>
