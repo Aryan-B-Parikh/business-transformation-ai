@@ -2,16 +2,10 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
-// Audit the deployable API runtime. PptxGenJS 4.0.1 declares image-size, but
-// image-size has no published version fixing the current HIGH advisories.
-// npm audit's suggested --force remediation downgrades PptxGenJS to 1.1.5,
-// which is not an acceptable security or compatibility fix. Keep this exception
-// narrow: only the image-size advisories reached through the approved PptxGenJS
-// 4.0.1 runtime dependency are allowlisted.
 const apiDir = path.resolve(__dirname, "../apps/api");
 const apiPackage = JSON.parse(fs.readFileSync(path.join(apiDir, "package.json"), "utf8"));
 const declaredPptx = String(apiPackage.dependencies?.pptxgenjs || "");
-const pptxApproved = declaredPptx === "^4.0.1" || declaredPptx === "4.0.1";
+const pptxApproved = ["4.0.1", "^4.0.1"].includes(declaredPptx);
 
 const result = spawnSync(
   process.platform === "win32" ? "npm.cmd" : "npm",
@@ -28,16 +22,20 @@ try {
   process.exit(1);
 }
 
+const isImageSizeViaPptx = (name, vulnerability) => {
+  if (!pptxApproved) return false;
+  if (name === "image-size") return true;
+  if (name !== "pptxgenjs") return false;
+  const via = Array.isArray(vulnerability?.via) ? vulnerability.via : [];
+  return via.length > 0 && via.every((entry) =>
+    entry === "image-size" || (entry && typeof entry === "object" && entry.name === "image-size"),
+  );
+};
+
 const failures = [];
 for (const [name, vulnerability] of Object.entries(report.vulnerabilities || {})) {
   if (!["high", "critical"].includes(vulnerability.severity)) continue;
-  const onlyImageSizeViaPptx =
-    name === "pptxgenjs" &&
-    pptxApproved &&
-    Array.isArray(vulnerability.via) &&
-    vulnerability.via.some((v) => v && typeof v === "object" && v.name === "image-size");
-  const directImageSizeException = name === "image-size" && pptxApproved;
-  if (onlyImageSizeViaPptx || directImageSizeException) continue;
+  if (isImageSizeViaPptx(name, vulnerability)) continue;
   failures.push({
     name,
     severity: vulnerability.severity,
@@ -58,6 +56,4 @@ if (result.status !== 0 && !report.vulnerabilities) {
 }
 
 console.log("Dependency audit passed: no unapproved HIGH/CRITICAL API runtime vulnerabilities.");
-if (pptxApproved) {
-  console.log("Tracked exception: PptxGenJS 4.0.1 -> image-size; no published patched image-size release exists.");
-}
+if (pptxApproved) console.log("Tracked exception: PptxGenJS 4.0.1 -> image-size advisories; no patched image-size release is available without downgrading PptxGenJS.");
