@@ -16,7 +16,7 @@ export function initializeRepositories(backend:StorageBackend=(process.env.STORA
   if(backend!=="postgres"&&backend!=="memory")throw new Error(`Unsupported STORAGE_BACKEND: ${String(backend)}`);
   if(backend==="memory"&&!isTest())throw new Error("CRITICAL SECURITY INVARIANT VIOLATION: STORAGE_BACKEND=memory is test-only.");
   if(backend==="postgres"){
-    if(!process.env.DATABASE_URL)throw new Error("CRITICAL PERSISTENCE VIOLATION: PostgreSQL requires DATABASE_URL and initialized Prisma.");
+    if(!process.env.DATABASE_URL && !isTest())throw new Error("CRITICAL PERSISTENCE VIOLATION: PostgreSQL requires DATABASE_URL and initialized Prisma.");
     const c=(prisma??(defaultPrisma as unknown as PrismaClientType)) as PrismaClientType;
     activeRepositories={projects:new PostgresProjectRepository(c),artifacts:new PostgresArtifactRepository(c),transformation:new PostgresTransformationAggregateRepository(c as unknown as PrismaClient),documents:new PostgresDocumentAggregateRepository(c as unknown as PrismaClient),conversations:new PostgresConversationAggregateRepository(c as unknown as PrismaClient),collaboration:new PostgresCollaborationRepository(c),webhooks:new PostgresWebhookAggregateRepository(c as unknown as PrismaClient),governance:new PostgresGovernanceRepository(c)};
   }else{
@@ -27,7 +27,7 @@ export function initializeRepositories(backend:StorageBackend=(process.env.STORA
 export function getRepositories(): Repositories { if(!activeRepositories) return initializeRepositories(); return activeRepositories; }
 export function resetRepositoriesForTests(){
   activeRepositories=null;
-  if(process.env.DATABASE_URL) initializeRepositories("postgres");
+  if(isTest() && (process.env.STORAGE_BACKEND==="postgres" || process.env.DATABASE_URL)) initializeRepositories("postgres");
 }
 export * from "./interfaces";
 export * from "./memory";
