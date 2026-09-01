@@ -38,7 +38,6 @@ export function createApp(): express.Express {
   app.get("/healthz", (_req, res) => res.json({ status: "healthy", timestamp: new Date().toISOString() }));
   app.get("/readyz", async (_req, res) => {
     try {
-      // Basic readiness: ensure we can resolve repositories (DB reachable in postgres mode)
       if (process.env.STORAGE_BACKEND === "postgres" && process.env.DATABASE_URL) {
         const { prisma } = await import("./db/client");
         await prisma.$queryRaw`SELECT 1`;
@@ -67,6 +66,11 @@ export function createApp(): express.Express {
   v1.use(webhookRoutes);
   v1.use(adminRoutes);
   app.use("/api/v1", v1);
+
+  // Backward-compatible internal AI route used by the legacy discovery contract.
+  // The AI router retains its authenticate middleware, so this does not expose an unauthenticated path.
+  app.use("/ai/v1", aiRoutes);
+
   app.use("/api/v1", (_req, res) => res.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } }));
 
   app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
