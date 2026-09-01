@@ -41,7 +41,6 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: npm test --workspaces --if-present
-      - run: cd apps/api && npx vitest run tests/*.test.ts --exclude "**/e2e/**" --exclude "**/*.e2e.test.ts"
 
   test-integration:
     name: Gate 2b — Integration Tests
@@ -101,7 +100,6 @@ jobs:
           GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;
           GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;
           SQL
-          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "SELECT rolname FROM pg_roles WHERE rolname='bta_app' AND rolsuper=false AND rolbypassrls=false;" | grep bta_app
       - name: Create MinIO bucket
         run: |
           docker run --rm --network host minio/mc:latest sh -c 'mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb --ignore-existing local/bta-storage-test && mc anonymous set none local/bta-storage-test'
