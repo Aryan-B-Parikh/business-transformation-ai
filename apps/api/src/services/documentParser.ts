@@ -8,110 +8,19 @@ export class TimeoutError extends Error { constructor(message:string){super(mess
 export interface DocumentChunk { id:string; documentId:string; orgId:string; chunkText:string; embedding:number[]; pageRef:number|null; }
 const testOnly=()=>process.env.NODE_ENV==="test"||process.env.VITEST==="true";
 const chunks=new Map<string,DocumentChunk[]>(); const byId=new Map<string,DocumentChunk>();
-
 export function clearChunks(){if(!testOnly())return;chunks.clear();byId.clear();}
 export function getChunks(documentId:string){if(!testOnly())return [];return chunks.get(documentId)||[];}
 export function getAllChunksByOrg(orgId:string){if(!testOnly())return [];return [...chunks.values()].flat().filter(c=>c.orgId===orgId);}
 export function getChunksByProject(_projectId:string,orgId:string,docIdsForProject:Set<string>){if(!testOnly())return [];return [...chunks.entries()].filter(([id])=>docIdsForProject.has(id)).flatMap(([,list])=>list.filter(c=>c.orgId===orgId));}
-/**
- * Embedding abstraction — production uses real model when configured.
- * Set EMBEDDINGS_PROVIDER=openai and OPENAI_API_KEY to enable real embeddings.
- * Falls back to deterministic hash (tests / offline) — same dims (1536) for pgvector.
- * For real pgvector, create index: CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops);
- */
 function hashEmbed(text:string,dims=1536){const vec=new Array(dims).fill(0);const words=text.toLowerCase().split(/\W+/).filter(Boolean);for(const w of words){let h=2166136261;for(let i=0;i<w.length;i++)h=Math.imul(h^w.charCodeAt(i),16777619);vec[Math.abs(h)%dims]+=1+Math.log(1+w.length);}for(let i=0;i<words.length-1;i++){const s=`${words[i]} ${words[i+1]}`;let h=2166136261;for(let j=0;j<s.length;j++)h=Math.imul(h^s.charCodeAt(j),16777619);vec[Math.abs(h)%dims]+=.5;}const norm=Math.sqrt(vec.reduce((s,v)=>s+v*v,0))||1;return vec.map(v=>v/norm);}
 export function embed(text:string,dims=1536){return hashEmbed(text,dims);}
-export async function embedAsync(text:string,dims=1536):Promise<number[]>{
-  const provider = process.env.EMBEDDINGS_PROVIDER;
-  const key = process.env.OPENAI_API_KEY;
-  if(provider === "openai" && key && process.env.NODE_ENV !== "test") {
-    try {
-      const res = await fetch("https://api.openai.com/v1/embeddings",{method:"POST",headers:{ "Content-Type":"application/json", Authorization:`Bearer ${key}`},body:JSON.stringify({model:"text-embedding-3-small",input:text,dimensions:dims})});
-      if(res.ok){ const data=await res.json() as {data:[{embedding:number[]}]}; if(data.data?.[0]?.embedding) return data.data[0].embedding; }
-    } catch { /* fallback */ }
-  }
-  return hashEmbed(text,dims);
-}
+export async function embedAsync(text:string,dims=1536):Promise<number[]>{const provider=process.env.EMBEDDINGS_PROVIDER;const key=process.env.OPENAI_API_KEY;if(provider==="openai"&&key&&process.env.NODE_ENV!=="test"){try{const res=await fetch("https://api.openai.com/v1/embeddings",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${key}`},body:JSON.stringify({model:"text-embedding-3-small",input:text,dimensions:dims})});if(res.ok){const data=await res.json() as {data:[{embedding:number[]}]};if(data.data?.[0]?.embedding)return data.data[0].embedding;}}catch{/* fallback */}}return hashEmbed(text,dims);}
 export function cosineSimilarity(a:number[],b:number[]){if(a.length!==b.length)throw new Error("Vector dimension mismatch");return a.reduce((s,v,i)=>s+v*(b[i]??0),0);}
-async function extractPdf(buffer: Buffer) {
-  try {
-    const data = await pdfParse(buffer);
-    return { text: data.text || "", pages: data.numpages || 1 };
-  } catch (e: any) {
-    return { text: buffer.toString("utf8"), pages: 1 };
-  }
-}
-async function extractDocx(buffer: Buffer) {
-  try {
-    const res = await mammoth.extractRawText({ buffer });
-    return { text: res.value || "", pages: 1 };
-  } catch (e: any) {
-    return { text: buffer.toString("utf8"), pages: 1 };
-  }
-}
-async function parseRemote(fileBuffer: Buffer, filename: string, mimetype: string): Promise<string> {
-  const sandboxUrl = process.env.PARSER_SANDBOX_URL;
-  if (!sandboxUrl) throw new Error("Sandbox URL not configured");
-  const formData = new FormData();
-  formData.append("file", new Blob([fileBuffer], { type: mimetype }), filename);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  try {
-    const response = await fetch(sandboxUrl, { method: "POST", body: formData as any, signal: controller.signal });
-    if (!response.ok) throw new Error(`Sandbox returned ${response.status}: ${await response.text()}`);
-    const data = await response.json() as any;
-    return data.content || "";
-  } catch (e: any) {
-    if (e.name === 'AbortError') throw new TimeoutError("Parser sandbox timed out");
-    throw new Error(`Parser sandbox failed: ${e.message}`);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-async function extractPptx(buffer:Buffer){
-  // Zip bomb protection
-  if (buffer.length > 10*1024*1024) throw new ExtractionLimitError("PPTX exceeds 10MB");
-  const zip=await JSZip.loadAsync(buffer, { createFolders: false });
-  const entries = Object.values(zip.files);
-  if (entries.length > 500) throw new ExtractionLimitError(`PPTX too many entries: ${entries.length}`);
-  let totalUncompressed = 0;
-  for(const e of entries){
-    // @ts-ignore _data exists
-    const size = (e as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0;
-    totalUncompressed += size;
-    if (totalUncompressed > 50*1024*1024) throw new ExtractionLimitError("PPTX uncompressed too large (zip bomb)");
-    if (e.name.includes("..") || e.name.startsWith("/") || e.name.includes("\\")) throw new Error("Path traversal in PPTX");
-  }
-  const slides=Object.keys(zip.files).filter(n=>/^ppt\/slides\/slide\d+\.xml$/i.test(n)).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-  if (slides.length > 200) throw new ExtractionLimitError(`Too many slides: ${slides.length}`);
-  const texts:string[]=[];for(const name of slides){
-    const xml=await zip.files[name]!.async("text");
-    if (xml.length > 500000) throw new ExtractionLimitError(`Slide ${name} too large`);
-    texts.push([...xml.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)].map(m=>m[1]!.replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">")).join(" "));
-  }
-  return{text:texts.join("\n\n"),pages:Math.max(1,slides.length)};}
-export async function extractText(buffer:Buffer,filename:string){
-  if (process.env.TEST_SLOW_PARSER) {
-    await new Promise((r) => setTimeout(r, Number(process.env.TEST_SLOW_PARSER)));
-  }
-  const allowFallback = process.env.ALLOW_PARSER_FALLBACK === "true";
-  const l=filename.toLowerCase();
-  const isUntrusted = l.endsWith(".pdf") || l.endsWith(".docx") || l.endsWith(".pptx") || l.endsWith(".txt");
-  if (isUntrusted && process.env.PARSER_SANDBOX_URL) {
-    const mime = l.endsWith(".pdf") ? "application/pdf" : l.endsWith(".docx") ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : l.endsWith(".pptx") ? "application/vnd.openxmlformats-officedocument.presentationml.presentation" : "text/plain";
-    try {
-      return {text: await parseRemote(buffer, filename, mime), pages: 1};
-    } catch (err) {
-      if (!allowFallback) throw err;
-      // Fallback only when explicitly allowed
-    }
-  }
-  if(l.endsWith(".pdf")) return extractPdf(buffer);
-  if(l.endsWith(".docx")) return extractDocx(buffer);
-  if(l.endsWith(".pptx"))return extractPptx(buffer);
-  if(l.endsWith(".txt"))return{text:buffer.toString("utf8"),pages:1};
-  throw new Error("Unsupported document format");
-}
+async function extractPdf(buffer:Buffer){try{const data=await pdfParse(buffer);return{text:data.text||"",pages:data.numpages||1};}catch{return{text:buffer.toString("utf8"),pages:1};}}
+async function extractDocx(buffer:Buffer){try{const res=await mammoth.extractRawText({buffer});return{text:res.value||"",pages:1};}catch{return{text:buffer.toString("utf8"),pages:1};}}
+async function parseRemote(fileBuffer:Buffer,filename:string,mimetype:string):Promise<string>{const sandboxUrl=process.env.PARSER_SANDBOX_URL;if(!sandboxUrl)throw new Error("Sandbox URL not configured");const formData=new FormData();const blobData=new Uint8Array(fileBuffer.buffer,fileBuffer.byteOffset,fileBuffer.byteLength);formData.append("file",new Blob([blobData],{type:mimetype}),filename);const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),30000);try{const response=await fetch(sandboxUrl,{method:"POST",body:formData,signal:controller.signal});if(!response.ok)throw new Error(`Sandbox returned ${response.status}: ${await response.text()}`);const data=await response.json() as {content?:string};return data.content||"";}catch(e:unknown){if(e instanceof Error&&e.name==="AbortError")throw new TimeoutError("Parser sandbox timed out");throw new Error(`Parser sandbox failed: ${e instanceof Error?e.message:String(e)}`);}finally{clearTimeout(timeout);}}
+async function extractPptx(buffer:Buffer){if(buffer.length>10*1024*1024)throw new ExtractionLimitError("PPTX exceeds 10MB");const zip=await JSZip.loadAsync(buffer,{createFolders:false});const entries=Object.values(zip.files);if(entries.length>500)throw new ExtractionLimitError(`PPTX too many entries: ${entries.length}`);let totalUncompressed=0;for(const e of entries){const size=(e as unknown as {_data?:{uncompressedSize?:number}})._data?.uncompressedSize??0;totalUncompressed+=size;if(totalUncompressed>50*1024*1024)throw new ExtractionLimitError("PPTX uncompressed too large (zip bomb)");if(e.name.includes("..")||e.name.startsWith("/")||e.name.includes("\\"))throw new Error("Path traversal in PPTX");}const slides=Object.keys(zip.files).filter(n=>/^ppt\/slides\/slide\d+\.xml$/i.test(n)).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));if(slides.length>200)throw new ExtractionLimitError(`Too many slides: ${slides.length}`);const texts:string[]=[];for(const name of slides){const xml=await zip.files[name]!.async("text");if(xml.length>500000)throw new ExtractionLimitError(`Slide ${name} too large`);texts.push([...xml.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)].map(m=>m[1]!.replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">" )).join(" "));}return{text:texts.join("\n\n"),pages:Math.max(1,slides.length)};}
+export async function extractText(buffer:Buffer,filename:string){if(process.env.TEST_SLOW_PARSER)await new Promise(r=>setTimeout(r,Number(process.env.TEST_SLOW_PARSER)));const allowFallback=process.env.ALLOW_PARSER_FALLBACK==="true";const l=filename.toLowerCase();const isUntrusted=l.endsWith(".pdf")||l.endsWith(".docx")||l.endsWith(".pptx")||l.endsWith(".txt");if(isUntrusted&&process.env.PARSER_SANDBOX_URL){const mime=l.endsWith(".pdf")?"application/pdf":l.endsWith(".docx")?"application/vnd.openxmlformats-officedocument.wordprocessingml.document":l.endsWith(".pptx")?"application/vnd.openxmlformats-officedocument.presentationml.presentation":"text/plain";try{return{text:await parseRemote(buffer,filename,mime),pages:1};}catch(err){if(!allowFallback)throw err;}}if(l.endsWith(".pdf"))return extractPdf(buffer);if(l.endsWith(".docx"))return extractDocx(buffer);if(l.endsWith(".pptx"))return extractPptx(buffer);if(l.endsWith(".txt"))return{text:buffer.toString("utf8"),pages:1};throw new Error("Unsupported document format");}
 export function chunkText(text:string,chunkSize=1200,overlap=150){if(!text.trim())return[];const out:{chunk:string;pageRef:number}[]=[];let start=0;while(start<text.length){const end=Math.min(start+chunkSize,text.length),chunk=text.slice(start,end).trim();if(chunk)out.push({chunk,pageRef:Math.max(1,Math.ceil((start+chunk.length/2)/3000))});if(end===text.length)break;start=end-overlap;}return out;}
-export async function processDocument(params:{documentId:string;orgId:string;buffer:Buffer;filename:string}):Promise<DocumentChunk[]>{const{documentId,orgId,buffer,filename}=params;if(buffer.length>10*1024*1024)throw new ExtractionLimitError("Document buffer exceeds 10MB limit");const timeoutMs=process.env.NODE_ENV==="test"&&process.env.TEST_FAST_TIMEOUT?Number(process.env.TEST_FAST_TIMEOUT):30000;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);try{const{ text}=await Promise.race([extractText(buffer,filename),new Promise<{text:string,pages:number}>((_,reject)=>{if(controller.signal.aborted)return reject(new TimeoutError(`Document processing timed out after ${timeoutMs}ms`));controller.signal.addEventListener("abort",()=>reject(new TimeoutError(`Document processing timed out after ${timeoutMs}ms`)));})]);if(text.length>500000)throw new ExtractionLimitError("Extracted text exceeds 500,000 characters limit");const pieces=chunkText(text);if(!pieces.length)throw new Error("No text extracted");const embeddings = await Promise.all(pieces.map(p => embedAsync(p.chunk)));const produced=pieces.map(({chunk,pageRef},i)=>({id:uuidv4(),documentId,orgId,chunkText:chunk,embedding:embeddings[i]!,pageRef}));if(testOnly()){chunks.set(documentId,produced);for(const c of produced)byId.set(c.id,c);}return produced;}catch(e){if(controller.signal.aborted||e instanceof TimeoutError)throw new TimeoutError(`Document processing timed out after ${timeoutMs}ms`);throw e;}finally{clearTimeout(timer);}}
+export async function processDocument(params:{documentId:string;orgId:string;buffer:Buffer;filename:string}):Promise<DocumentChunk[]>{const{documentId,orgId,buffer,filename}=params;if(buffer.length>10*1024*1024)throw new ExtractionLimitError("Document buffer exceeds 10MB limit");const timeoutMs=process.env.NODE_ENV==="test"&&process.env.TEST_FAST_TIMEOUT?Number(process.env.TEST_FAST_TIMEOUT):30000;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);try{const{text}=await Promise.race([extractText(buffer,filename),new Promise<{text:string;pages:number}>((_,reject)=>{if(controller.signal.aborted)return reject(new TimeoutError(`Document processing timed out after ${timeoutMs}ms`));controller.signal.addEventListener("abort",()=>reject(new TimeoutError(`Document processing timed out after ${timeoutMs}ms`)));})]);if(text.length>500000)throw new ExtractionLimitError("Extracted text exceeds 500,000 characters limit");const pieces=chunkText(text);if(!pieces.length)throw new Error("No text extracted");const embeddings=await Promise.all(pieces.map(p=>embedAsync(p.chunk)));const produced=pieces.map(({chunk,pageRef},i)=>({id:uuidv4(),documentId,orgId,chunkText:chunk,embedding:embeddings[i]!,pageRef}));if(testOnly()){chunks.set(documentId,produced);for(const c of produced)byId.set(c.id,c);}return produced;}catch(e){if(controller.signal.aborted||e instanceof TimeoutError)throw new TimeoutError(`Document processing timed out after ${timeoutMs}ms`);throw e;}finally{clearTimeout(timer);}}
 export function getChunkById(id:string){if(!testOnly())return undefined;return byId.get(id);}
