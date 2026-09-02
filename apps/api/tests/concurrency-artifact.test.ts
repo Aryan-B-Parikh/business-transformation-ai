@@ -1,13 +1,36 @@
 import request from "supertest";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { PrismaClient } from "@prisma/client";
 import { createApp } from "../src/app";
-import { getSeedPlainPassword } from "../src/auth/users";
+import { getSeedPlainPassword, SEED_USERS, ORG_A } from "../src/auth/users";
 import { resetRepositoriesForTests } from "../src/repositories";
 
 const app = createApp();
 const plain = getSeedPlainPassword();
 
 describe("Concurrency — artifact version optimistic locking", () => {
+  beforeAll(async () => {
+    if (!process.env.DATABASE_URL) return;
+    const adminUrl = process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL;
+    const prisma = new PrismaClient({ datasources: { db: { url: adminUrl } } });
+    try {
+      await prisma.organization.upsert({
+        where: { id: ORG_A },
+        update: {},
+        create: { id: ORG_A, name: "Org A (concurrency)", plan: "enterprise" },
+      });
+      for (const u of SEED_USERS.filter((u) => u.orgId === ORG_A)) {
+        await prisma.user.upsert({
+          where: { id: u.id },
+          update: {},
+          create: { id: u.id, orgId: u.orgId, email: u.email, name: u.name, role: u.role as any, passwordHash: u.passwordHash },
+        });
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
   beforeEach(() => resetRepositoriesForTests());
 
   it("optimistic locking: stale expectedVersion → 409, correct → 200", async () => {
@@ -30,8 +53,10 @@ describe("Concurrency — artifact version optimistic locking", () => {
 
   it("journey concurrent transitions → one 200, one 409 (version mismatch)", async () => {
     const token = (await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain })).body.token;
-    const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: "WS journey conc" });
-    const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: "Proj journey conc" });
+    const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: "WS journey conc " + Date.now() });
+    expect(ws.status).toBe(201);
+    const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: "Proj journey conc " + Date.now() });
+    expect(proj.status).toBe(201);
     // Init to idea (version 1) then discovery
     await request(app).post(`/api/v1/projects/${proj.body.id}/journey/transition`).set("Authorization", `Bearer ${token}`).send({ stage: "idea", status: "in_progress" });
     await request(app).post(`/api/v1/projects/${proj.body.id}/journey/transition`).set("Authorization", `Bearer ${token}`).send({ stage: "discovery", status: "in_progress", version: 1 });
