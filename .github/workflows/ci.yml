@@ -204,6 +204,9 @@ jobs:
           cd apps/api
           npx vitest run tests/e2e/
           npx vitest run tests/goldenPath.e2e.test.ts
+      - name: Dump API container logs (debug)
+        if: always()
+        run: docker compose -f docker-compose.test.yml logs api
       - name: Teardown Infrastructure
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
