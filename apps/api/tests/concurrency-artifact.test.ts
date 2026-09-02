@@ -12,9 +12,13 @@ describe("Concurrency — artifact version optimistic locking", () => {
 
   it("optimistic locking: stale expectedVersion → 409, correct → 200", async () => {
     const token = (await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain })).body.token;
-    const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: "WS conc" });
-    const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: "Proj conc" });
+    // Use admin token for workspace/project creation to ensure org exists (bypass RLS flakiness in CI)
+    const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: "WS conc " + Date.now() });
+    expect(ws.status).toBe(201);
+    const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: "Proj conc " + Date.now() });
+    expect(proj.status).toBe(201);
     const art = (await request(app).post(`/api/v1/projects/${proj.body.id}/artifacts/generate`).set("Authorization", `Bearer ${token}`).send({ type: "business_analysis" })).body;
+    expect(art.version).toBeDefined();
     const v = art.version as number;
     const stale = await request(app).patch(`/api/v1/artifacts/${art.id}`).set("Authorization", `Bearer ${token}`).send({ title: "stale", expectedVersion: 999 });
     expect(stale.status).toBe(409);
