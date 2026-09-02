@@ -150,7 +150,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Start Infrastructure (deterministic: postgres → minio → bucket → parser → api → worker)
+      - name: "Start Infrastructure (deterministic: postgres -> minio -> bucket -> parser -> api -> worker)"
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
