@@ -93,6 +93,7 @@ jobs:
           ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bta_app;
           ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
           SQL
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password';"
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
           echo "Verifying bta_app can connect..."
@@ -218,16 +219,25 @@ jobs:
           cd apps/api
           npx prisma migrate deploy
           # Create restricted bta_app exactly as docker/init-test-db.sql — least privilege, NOSUPERUSER, NOBYPASSRLS, no GRANT ALL
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=0 <<'SQL'
-          DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='bta_app') THEN CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF; END $$;
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bta_app') THEN
+              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+            ELSE
+              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+            END IF;
+          END $$;
           REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
           GRANT CONNECT ON DATABASE bta_test TO bta_app;
           GRANT USAGE, CREATE ON SCHEMA public TO bta_app;
           ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bta_app;
           ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
           SQL
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;" || true
-          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;" || true
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password';"
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
+          PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
+          echo "Verifying bta_app can connect..."
+          PGPASSWORD=bta_app_password psql -h localhost -U bta_app -d bta_test -c "SELECT 1 as ok;"
       - name: Run load + DR tests (SLO p95 < 200ms, worker restart survival)
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
