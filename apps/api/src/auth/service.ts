@@ -20,7 +20,8 @@ async function productionUserByEmail(email: string, orgId: string): Promise<User
   console.error(`[AUTH-DEBUG] >>> productionUserByEmail ENTRY email=${email} orgId=${orgId}`);
   try {
     const result = await withTenant(prisma as never, orgId, async (tx: unknown) => {
-      console.error(`[AUTH-DEBUG] withTenant callback start orgId=${orgId}`);
+      console.error(`[AUTH-DEBUG] CALLBACK START - this should appear`);
+      throw new Error('CALLBACK ENTERED - TEST');
       const rows = await (tx as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE org_id=$1::uuid AND lower(email)=lower($2) LIMIT 1", orgId, email);
       console.error(`[AUTH-DEBUG] query result rows=${rows?.length ?? 0}`);
       return rows[0] ?? null;
