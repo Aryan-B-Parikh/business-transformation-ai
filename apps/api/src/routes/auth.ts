@@ -13,19 +13,8 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     console.error(`[ROUTE] login request received email=${req.body.email} orgId=${req.body.orgId}`);
     const result = await login(req.body);
     console.error(`[ROUTE] login succeeded, result has refreshToken=${!!result.refreshToken}`);
-    if (result.refreshToken) {
-      res.cookie("refreshToken", result.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
-      // Always return refresh token in body for test compatibility
-      result.refreshTokenBody = result.refreshToken;
-      delete result.refreshToken;
-    }
-    console.error(`[ROUTE] sending json response`);
-    res.json(result);
+    // Simple response to isolate issue
+    res.status(200).json({ token: result.token, user: result.user });
   } catch (err: unknown) {
     const e = err as Error & { status?: number; code?: string };
     const status = e.status || 500;
