@@ -54,6 +54,7 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
         const pwMatch = await bcrypt.compare(req.password, user.passwordHash);
         console.error(`[AUTH-DEBUG] bcrypt.compare result=${pwMatch}`);
         if (pwMatch) {
+          console.error(`[AUTH-DEBUG] About to return issue() token`);
           return issue(user, createRefreshToken(user.id).token);
         }
       }
