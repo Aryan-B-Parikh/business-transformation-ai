@@ -14,11 +14,8 @@ RUN npm install --ignore-scripts
 # Copy the rest of the application
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
-
-# Generate prisma client and build
-RUN cd apps/api && npx prisma generate
-RUN npm run build --workspace=packages/shared
-RUN npm run build --workspace=apps/api
+COPY apps/web ./apps/web
+COPY apps/mobile ./apps/mobile
 
 # Production stage
 FROM node:20-alpine3.18 AS runner
@@ -30,6 +27,8 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/tsconfig.base.json ./tsconfig.base.json
 COPY --from=builder /app/packages/shared ./packages/shared
 COPY --from=builder /app/apps/api ./apps/api
+COPY --from=builder /app/apps/web ./apps/web
+COPY --from=builder /app/apps/mobile ./apps/mobile
 
 # Expose API port
 EXPOSE 3000
