@@ -12,7 +12,7 @@ export interface SsoCallbackRequest { provider: string; code: string; email?: st
 export interface AuthResult { token: string; refreshToken?: string; refreshTokenBody?: string; user: { id: string; orgId: string; email: string; name: string; role: string }; }
 type UserRecord = { id: string; orgId: string; email: string; name: string; role: string; passwordHash?: string | null; ssoProvider?: string | null };
 function authError(message: string, status = 401, code = "UNAUTHORIZED") { const e = new Error(message) as Error & { status?: number; code?: string }; e.status = status; e.code = code; return e; }
-function issue(user: UserRecord, refreshToken?: string): AuthResult { return { token: signToken({ userId: user.id, orgId: user.orgId, role: user.role, email: user.email }), refreshToken, user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role } }; }
+function issue(user: UserRecord, refreshToken?: string): AuthResult { console.error(`[AUTH-DEBUG] issue() called userId=${user.id} orgId=${user.orgId}`); return { token: signToken({ userId: user.id, orgId: user.orgId, role: user.role, email: user.email }), refreshToken, user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role } }; }
 function makeProductionRefreshToken(orgId: string) { return `${orgId}.${crypto.randomBytes(32).toString("hex")}`; }
 function splitProductionRefreshToken(value: string) { const i = value.indexOf("."); if (i < 1) throw authError("Invalid refresh token"); return { orgId: value.slice(0, i), secret: value.slice(i + 1) }; }
 
