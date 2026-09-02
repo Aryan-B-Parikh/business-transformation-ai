@@ -51,7 +51,9 @@ export async function withTenant<T>(
     console.error(`[AUTH-DEBUG] withTenant setting GUC orgId=${tenantId}`);
     await p.$executeRawUnsafe("SELECT set_config('app.current_org_id', $1, true)", tenantId);
     console.error(`[AUTH-DEBUG] withTenant GUC set, calling fn`);
-    return fn(tx);
+    const promise = fn(tx);
+    console.error(`[AUTH-DEBUG] withTenant fn returned promise, awaiting...`);
+    return promise;
   });
 }
 
