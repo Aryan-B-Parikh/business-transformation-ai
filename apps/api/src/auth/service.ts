@@ -40,7 +40,8 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
       if (user && user.passwordHash && await bcrypt.compare(req.password, user.passwordHash)) {
         return issue(user, createRefreshToken(user.id).token);
       }
-    } catch { /* fallback to seed */ }
+      console.error(`[AUTH-DEBUG] DB lookup returned null or password mismatch for email=${req.email} orgId=${req.orgId} user=${JSON.stringify(user)}`);
+    } catch (e) { console.error(`[AUTH-DEBUG] DB lookup threw for email=${req.email} orgId=${req.orgId}`, e); }
   }
   const user = findUserByEmail(req.email, req.orgId);
   if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
