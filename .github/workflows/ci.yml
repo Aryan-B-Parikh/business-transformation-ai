@@ -94,8 +94,9 @@ jobs:
           ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
           SQL
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password';"
-          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
-          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT ALL ON SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
           echo "Verifying bta_app can connect..."
           PGPASSWORD=bta_app_password psql -h localhost -U bta_app -d bta_test -c "SELECT 1 as ok;"
       - name: Create MinIO bucket (single container, alias+mb atomically)
