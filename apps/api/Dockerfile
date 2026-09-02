@@ -17,6 +17,9 @@ COPY apps/api ./apps/api
 COPY apps/web ./apps/web
 COPY apps/mobile ./apps/mobile
 
+# Generate Prisma client (npm install used --ignore-scripts)
+RUN cd apps/api && npx prisma generate
+
 # Production stage
 FROM node:20-alpine3.18 AS runner
 
