@@ -75,7 +75,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
-      - name: Create bta_app role (least privilege, NOSUPERUSER NOBYPASSRLS — mirrors docker/init-test-db.sql)
+      - name: Create bta_app role (least privilege, NOBYPASSRLS — RLS enforced, bta_app can see organizations without GUC)
         env:
           PGPASSWORD: postgres
         run: |
@@ -94,11 +94,10 @@ jobs:
           ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO bta_app;
           SQL
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password';"
-          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT ALL ON SCHEMA public TO bta_app;"
-          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO bta_app;"
-          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
-          echo "Verifying bta_app can connect..."
-          PGPASSWORD=bta_app_password psql -h localhost -U bta_app -d bta_test -c "SELECT 1 as ok;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
+          echo "Verifying bta_app can connect and see organizations..."
+          PGPASSWORD=bta_app_password psql -h localhost -U bta_app -d bta_test -c "SELECT id FROM organizations WHERE id='00000000-0000-0000-0000-0000000000aa'; SELECT 1 as ok;"
       - name: Create MinIO bucket (single container, alias+mb atomically)
         run: |
           docker run --rm --network host --entrypoint /bin/sh minio/mc:latest -c '
