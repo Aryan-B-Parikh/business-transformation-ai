@@ -91,7 +91,7 @@ jobs:
           psql -h localhost -U postgres -d bta_test -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;" || true
       - name: Create MinIO bucket (single container, alias+mb atomically)
         run: |
-          docker run --rm --network host minio/mc:latest sh -c '
+          docker run --rm --network host --entrypoint /bin/sh minio/mc:latest -c '
             mc alias set local http://localhost:9000 minioadmin minioadmin &&
             mc mb --ignore-existing local/bta-storage-test &&
             mc anonymous set none local/bta-storage-test

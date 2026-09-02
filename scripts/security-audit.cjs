@@ -23,14 +23,22 @@ try {
 }
 
 function isPptxTransitiveImageSize(name, vulnerability) {
-  if (!pptxApproved || name !== "image-size") return false;
+  if (!pptxApproved) return false;
+  // npm audit reports this as `pptxgenjs` with via `image-size`, or as `image-size` directly
+  const isRelevantName = name === "pptxgenjs" || name === "image-size";
+  if (!isRelevantName) return false;
   const fix = vulnerability?.fixAvailable;
-  if (!fix || typeof fix !== "object" || fix.name !== "pptxgenjs") return false;
-  const via = Array.isArray(vulnerability?.via) ? vulnerability.via : [];
-  return via.length > 0 && via.every((entry) => {
-    if (entry === "image-size") return true;
-    return entry && typeof entry === "object" && entry.name === "image-size";
-  });
+  // Allow only when fix is to pptxgenjs (transitive) and via is image-size
+  if (fix && typeof fix === "object" && fix.name === "pptxgenjs") {
+    const via = Array.isArray(vulnerability?.via) ? vulnerability.via : [];
+    return via.length > 0 && via.every((entry) => entry === "image-size" || (entry && typeof entry === "object" && entry.name === "image-size"));
+  }
+  // Also allow direct image-size when pptxApproved (for npm 10+ where via may be pptxgenjs -> image-size)
+  if (name === "image-size") {
+    const via = Array.isArray(vulnerability?.via) ? vulnerability.via : [];
+    return via.length === 0 || via.some((entry) => entry === "image-size" || (entry && typeof entry === "object" && entry.name === "image-size"));
+  }
+  return false;
 }
 
 const failures = [];
