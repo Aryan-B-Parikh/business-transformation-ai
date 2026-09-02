@@ -10,9 +10,7 @@ const router = Router();
 
 router.post("/auth/login", async (req: Request, res: Response) => {
   try {
-    console.error(`[AUTH-ROUTE] login request received email=${req.body.email} orgId=${req.body.orgId}`);
     const result = await login(req.body);
-    console.error(`[AUTH-ROUTE] login succeeded, sending response`);
     if (result.refreshToken) {
       res.cookie("refreshToken", result.refreshToken, {
         httpOnly: true,
@@ -29,7 +27,6 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     const e = err as Error & { status?: number; code?: string };
     const status = e.status || 500;
     const code = e.code || (status === 401 ? "UNAUTHORIZED" : status === 400 ? "BAD_REQUEST" : "INTERNAL_ERROR");
-    console.error(`[AUTH-ROUTE] login failed status=${status} code=${code} message=${e.message}`);
     res.status(status).json({ error: { code, message: e.message } });
   }
 });

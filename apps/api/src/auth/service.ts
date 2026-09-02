@@ -12,29 +12,18 @@ export interface SsoCallbackRequest { provider: string; code: string; email?: st
 export interface AuthResult { token: string; refreshToken?: string; refreshTokenBody?: string; user: { id: string; orgId: string; email: string; name: string; role: string }; }
 type UserRecord = { id: string; orgId: string; email: string; name: string; role: string; passwordHash?: string | null; ssoProvider?: string | null };
 function authError(message: string, status = 401, code = "UNAUTHORIZED") { const e = new Error(message) as Error & { status?: number; code?: string }; e.status = status; e.code = code; return e; }
-function issue(user: UserRecord, refreshToken?: string): AuthResult { console.error(`[AUTH-DEBUG] issue() called userId=${user.id} orgId=${user.orgId}`); return { token: signToken({ userId: user.id, orgId: user.orgId, role: user.role, email: user.email }), refreshToken, user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role } }; }
+function issue(user: UserRecord, refreshToken?: string): AuthResult { return { token: signToken({ userId: user.id, orgId: user.orgId, role: user.role, email: user.email }), refreshToken, user: { id: user.id, orgId: user.orgId, email: user.email, name: user.name, role: user.role } }; }
 function makeProductionRefreshToken(orgId: string) { return `${orgId}.${crypto.randomBytes(32).toString("hex")}`; }
 function splitProductionRefreshToken(value: string) { const i = value.indexOf("."); if (i < 1) throw authError("Invalid refresh token"); return { orgId: value.slice(0, i), secret: value.slice(i + 1) }; }
 
 async function productionUserByEmail(email: string, orgId: string): Promise<UserRecord | null> {
-  console.error(`[AUTH-DEBUG] >>> productionUserByEmail ENTRY email=${email} orgId=${orgId}`);
-  try {
-    const result = await withTenant(prisma as never, orgId, async (tx: unknown) => {
-      console.error(`[AUTH-DEBUG] CALLBACK START orgId=${orgId}`);
-      const rows = await (tx as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE org_id=$1::uuid AND lower(email)=lower($2) LIMIT 1", orgId, email);
-      console.error(`[AUTH-DEBUG] query result rows=${rows?.length ?? 0}`);
-      return rows[0] ?? null;
-    });
-    console.error(`[AUTH-DEBUG] productionUserByEmail result=${result ? 'found' : 'null'}`);
-    return result;
-  } catch (e) {
-    console.error(`[AUTH-DEBUG] productionUserByEmail threw`, e);
-    throw e;
-  }
+  return withTenant(prisma as never, orgId, async (tx: unknown) => {
+    const rows = await (tx as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE org_id=$1::uuid AND lower(email)=lower($2) LIMIT 1", orgId, email);
+    return rows[0] ?? null;
+  });
 }
 
 export async function login(req: LoginRequest): Promise<AuthResult> {
-  console.error(`[AUTH-DEBUG-ENTRY] login called email=${req.email} orgId=${req.orgId} NODE_ENV=${process.env.NODE_ENV}`);
   if (!req.email || !req.password) throw authError("email and password required", 400, "BAD_REQUEST");
   if (process.env.NODE_ENV === "production") {
     if (!req.orgId) throw authError("orgId is required for tenant-scoped authentication", 400, "ORG_ID_REQUIRED");
@@ -47,31 +36,18 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
   // Test mode: try database first (for e2e tests with real DB), fallback to seed users
   let authResult: AuthResult | null = null;
   if (req.orgId) {
-    console.error(`[AUTH-DEBUG] about to call productionUserByEmail email=${req.email} orgId=${req.orgId}`);
     try {
       const user = await productionUserByEmail(req.email, req.orgId);
-      console.error(`[AUTH-DEBUG] productionUserByEmail returned user=${user ? 'found' : 'null'} passwordHash=${user?.passwordHash ? 'exists' : 'missing'}`);
-      if (user && user.passwordHash) {
-        const pwMatch = await bcrypt.compare(req.password, user.passwordHash);
-        console.error(`[AUTH-DEBUG] bcrypt.compare result=${pwMatch}`);
-        if (pwMatch) {
-          console.error(`[AUTH-DEBUG] About to set authResult from issue()`);
-          authResult = issue(user, createRefreshToken(user.id).token);
-          console.error(`[AUTH-DEBUG] authResult set successfully`);
-        }
+      if (user && user.passwordHash && await bcrypt.compare(req.password, user.passwordHash)) {
+        authResult = issue(user, createRefreshToken(user.id).token);
       }
-      if (!authResult) {
-        console.error(`[AUTH-DEBUG] DB lookup returned null or password mismatch for email=${req.email} orgId=${req.orgId} user=${JSON.stringify(user)}`);
-      }
-    } catch (e) { console.error(`[AUTH-DEBUG] CATCH BLOCK TRIGGERED for email=${req.email} orgId=${req.orgId}`, e); }
+    } catch { /* fallback to seed */ }
   }
   if (!authResult) {
-    console.error(`[AUTH-DEBUG] Reached seed user fallback for email=${req.email} orgId=${req.orgId}`);
     const user = findUserByEmail(req.email, req.orgId);
     if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
     authResult = issue(user, createRefreshToken(user.id).token);
   }
-  console.error(`[AUTH-DEBUG] Returning authResult`);
   return authResult!;
 }
 
