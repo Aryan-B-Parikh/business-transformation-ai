@@ -59,8 +59,9 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
         }
       }
       console.error(`[AUTH-DEBUG] DB lookup returned null or password mismatch for email=${req.email} orgId=${req.orgId} user=${JSON.stringify(user)}`);
-    } catch (e) { console.error(`[AUTH-DEBUG] DB lookup threw for email=${req.email} orgId=${req.orgId}`, e); }
+    } catch (e) { console.error(`[AUTH-DEBUG] CATCH BLOCK TRIGGERED for email=${req.email} orgId=${req.orgId}`, e); }
   }
+  console.error(`[AUTH-DEBUG] Reached seed user fallback for email=${req.email} orgId=${req.orgId}`);
   const user = findUserByEmail(req.email, req.orgId);
   if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
   return issue(user, createRefreshToken(user.id).token);
