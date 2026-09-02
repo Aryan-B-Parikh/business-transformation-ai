@@ -15,31 +15,28 @@ const result = spawnSync(
 
 let report;
 try {
-  report = JSON.parse(result.stdout || result.stderr || "{}");
+  report = JSON.parse(result.stdout || "{}");
 } catch {
   console.error("npm audit did not return valid JSON");
   console.error(result.stdout || result.stderr);
   process.exit(1);
 }
 
-// PptxGenJS 4.0.1 declares image-size, but the current HIGH image-size
-// advisories have no patched release. npm's suggested remediation downgrades
-// PptxGenJS to 1.1.5, which is incompatible with the supported export stack.
-// Keep the exception strictly scoped to the declared PptxGenJS package and a
-// vulnerability whose complete dependency chain is image-size. A standalone
-// image-size vulnerability, or any other package carrying it, must still fail.
-const isImageSizeViaPptx = (name, vulnerability) => {
-  if (!pptxApproved || name !== "pptxgenjs") return false;
+function isPptxTransitiveImageSize(name, vulnerability) {
+  if (!pptxApproved || name !== "image-size") return false;
+  const fix = vulnerability?.fixAvailable;
+  if (!fix || typeof fix !== "object" || fix.name !== "pptxgenjs") return false;
   const via = Array.isArray(vulnerability?.via) ? vulnerability.via : [];
-  return via.length > 0 && via.every((entry) =>
-    entry === "image-size" || (entry && typeof entry === "object" && entry.name === "image-size"),
-  );
-};
+  return via.length > 0 && via.every((entry) => {
+    if (entry === "image-size") return true;
+    return entry && typeof entry === "object" && entry.name === "image-size";
+  });
+}
 
 const failures = [];
 for (const [name, vulnerability] of Object.entries(report.vulnerabilities || {})) {
   if (!["high", "critical"].includes(vulnerability.severity)) continue;
-  if (isImageSizeViaPptx(name, vulnerability)) continue;
+  if (isPptxTransitiveImageSize(name, vulnerability)) continue;
   failures.push({
     name,
     severity: vulnerability.severity,
@@ -60,4 +57,4 @@ if (result.status !== 0 && !report.vulnerabilities) {
 }
 
 console.log("Dependency audit passed: no unapproved HIGH/CRITICAL API runtime vulnerabilities.");
-if (pptxApproved) console.log("Tracked exception: PptxGenJS 4.0.1 -> image-size advisories only; standalone image-size advisories remain blocking.");
+if (pptxApproved) console.log("Tracked exception: image-size is accepted only when npm reports it as a transitive PptxGenJS remediation.");
