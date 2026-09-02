@@ -36,7 +36,7 @@ jobs:
       - run: npm run build
       - run: npm test --workspaces --if-present
       - name: API unit tests (in-memory repos only)
-        run: cd apps/api && npx vitest run tests/*.test.ts --exclude "**/e2e/**" --exclude "**/*.e2e.test.ts"
+        run: cd apps/api && npx vitest run --exclude "**/*.e2e.test.ts" tests/
 
   test-integration:
     name: Gate 2b — Integration Tests (Postgres + MinIO + Parser)
