@@ -52,10 +52,12 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
     } catch (e) { console.error(`[LOGIN] try block threw`, e); }
   }
   if (!authResult) {
+    console.error(`[LOGIN] authResult is null, falling back to seed users`);
     const user = findUserByEmail(req.email, req.orgId);
     if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
     authResult = issue(user, createRefreshToken(user.id).token);
   }
+  console.error(`[LOGIN] returning authResult`);
   return authResult!;
 }
 
