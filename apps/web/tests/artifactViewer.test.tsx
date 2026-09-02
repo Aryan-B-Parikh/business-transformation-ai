@@ -85,10 +85,13 @@ describe("TASK-019 E2E: App artifact viewer integration", () => {
     await waitFor(() => {
       expect(view.getByTestId("artifact-version").textContent).toContain("Version: 2");
     });
-    // Regenerate
+    // Regenerate — mock the regenerateArtifact fetch
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: "art-1", version: 3, content: {} }) } as Response);
     const fb = view.getByTestId("feedback-input") as HTMLInputElement;
     fireEvent.change(fb, { target: { value: "feedback" } });
     fireEvent.click(view.getByTestId("regenerate-button"));
-    expect(view.getByTestId("artifact-version").textContent).toContain("Version: 3");
+    await waitFor(() => {
+      expect(view.getByTestId("artifact-version").textContent).toContain("Version: 3");
+    });
   });
 });

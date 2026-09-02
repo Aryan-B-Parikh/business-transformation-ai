@@ -21,7 +21,7 @@ describe("Phase 6: Document Processing Security", () => {
 
   it("should throw ExtractionLimitError if buffer exceeds 10MB limit", async () => {
     const documentId = uuidv4();
-    // Simulate an 11MB buffer
+    // Simulate an 11MB buffer — use .txt so it goes via Buffer.toString path, not pdfParse which OOMs on CI
     const hugeBuffer = Buffer.alloc(11 * 1024 * 1024, "a");
 
     await expect(
@@ -29,14 +29,14 @@ describe("Phase 6: Document Processing Security", () => {
         documentId,
         orgId,
         buffer: hugeBuffer,
-        filename: "huge.pdf",
+        filename: "huge.txt",
       })
     ).rejects.toThrowError(ExtractionLimitError);
   });
 
   it("should throw ExtractionLimitError if extracted text exceeds 500,000 characters", async () => {
     const documentId = uuidv4();
-    // 500,001 characters of printable text
+    // 500,001 characters — use .txt so extractText goes via Buffer.toString, not pdfParse OOM path
     const textBuffer = Buffer.from("a".repeat(500001));
 
     global.fetch = vi.fn().mockResolvedValue({
@@ -49,7 +49,7 @@ describe("Phase 6: Document Processing Security", () => {
         documentId,
         orgId,
         buffer: textBuffer,
-        filename: "long-text.pdf",
+        filename: "long-text.txt",
       })
     ).rejects.toThrowError(ExtractionLimitError);
   });
