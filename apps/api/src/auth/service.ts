@@ -17,7 +17,7 @@ function makeProductionRefreshToken(orgId: string) { return `${orgId}.${crypto.r
 function splitProductionRefreshToken(value: string) { const i = value.indexOf("."); if (i < 1) throw authError("Invalid refresh token"); return { orgId: value.slice(0, i), secret: value.slice(i + 1) }; }
 
 async function productionUserByEmail(email: string, orgId: string): Promise<UserRecord | null> {
-  console.error(`[AUTH-DEBUG] productionUserByEmail start email=${email} orgId=${orgId}`);
+  console.error(`[AUTH-DEBUG] >>> productionUserByEmail ENTRY email=${email} orgId=${orgId}`);
   try {
     const result = await withTenant(prisma as never, orgId, async (tx: unknown) => {
       console.error(`[AUTH-DEBUG] withTenant callback start orgId=${orgId}`);
@@ -46,6 +46,7 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
   }
   // Test mode: try database first (for e2e tests with real DB), fallback to seed users
   if (req.orgId) {
+    console.error(`[AUTH-DEBUG] about to call productionUserByEmail email=${req.email} orgId=${req.orgId}`);
     try {
       const user = await productionUserByEmail(req.email, req.orgId);
       if (user && user.passwordHash && await bcrypt.compare(req.password, user.passwordHash)) {
