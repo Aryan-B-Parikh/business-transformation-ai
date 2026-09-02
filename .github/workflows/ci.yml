@@ -167,6 +167,13 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
+      - name: Grant bta_app permissions on migrated tables
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, CREATE ON SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
       - name: Run E2E & True Golden Path Tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
