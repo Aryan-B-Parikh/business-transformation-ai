@@ -17,15 +17,13 @@ function makeProductionRefreshToken(orgId: string) { return `${orgId}.${crypto.r
 function splitProductionRefreshToken(value: string) { const i = value.indexOf("."); if (i < 1) throw authError("Invalid refresh token"); return { orgId: value.slice(0, i), secret: value.slice(i + 1) }; }
 
 async function productionUserByEmail(email: string, orgId: string): Promise<UserRecord | null> {
-  const result = await withTenant(prisma as never, orgId, async (tx: unknown) => {
+  return withTenant(prisma as never, orgId, async (tx: unknown) => {
     const rows = await (tx as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE org_id=$1::uuid AND lower(email)=lower($2) LIMIT 1", orgId, email);
     return rows[0] ?? null;
   });
-  return result;
 }
 
 export async function login(req: LoginRequest): Promise<AuthResult> {
-  console.error(`[LOGIN] entry email=${req.email} orgId=${req.orgId} NODE_ENV=${process.env.NODE_ENV}`);
   if (!req.email || !req.password) throw authError("email and password required", 400, "BAD_REQUEST");
   if (process.env.NODE_ENV === "production") {
     if (!req.orgId) throw authError("orgId is required for tenant-scoped authentication", 400, "ORG_ID_REQUIRED");
@@ -40,24 +38,16 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
   if (req.orgId) {
     try {
       const user = await productionUserByEmail(req.email, req.orgId);
-      console.error(`[LOGIN] productionUserByEmail returned user=${user ? 'found' : 'null'} passwordHash=${user?.passwordHash ? 'exists' : 'missing'}`);
-      if (user && user.passwordHash) {
-        console.error(`[LOGIN] calling bcrypt.compare`);
-        const pwMatch = await bcrypt.compare(req.password, user.passwordHash);
-        console.error(`[LOGIN] bcrypt.compare result=${pwMatch}`);
-        if (pwMatch) {
-          authResult = issue(user, createRefreshToken(user.id).token);
-        }
+      if (user && user.passwordHash && await bcrypt.compare(req.password, user.passwordHash)) {
+        authResult = issue(user, createRefreshToken(user.id).token);
       }
-    } catch (e) { console.error(`[LOGIN] try block threw`, e); }
+    } catch { /* fallback to seed */ }
   }
   if (!authResult) {
-    console.error(`[LOGIN] authResult is null, falling back to seed users`);
     const user = findUserByEmail(req.email, req.orgId);
     if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
     authResult = issue(user, createRefreshToken(user.id).token);
   }
-  console.error(`[LOGIN] returning authResult`);
   return authResult!;
 }
 

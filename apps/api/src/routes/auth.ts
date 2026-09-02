@@ -10,16 +10,23 @@ const router = Router();
 
 router.post("/auth/login", async (req: Request, res: Response) => {
   try {
-    console.error(`[ROUTE] login request received email=${req.body.email} orgId=${req.body.orgId}`);
     const result = await login(req.body);
-    console.error(`[ROUTE] login succeeded, result has refreshToken=${!!result.refreshToken}`);
-    // Hardcoded success response to isolate test issue
-    res.status(200).json({ token: "hardcoded-token-for-test", user: { id: "test-id", orgId: req.body.orgId, email: req.body.email, name: "Test User", role: "org_admin" } });
+    if (result.refreshToken) {
+      res.cookie("refreshToken", result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+      // Always return refresh token in body for test compatibility
+      result.refreshTokenBody = result.refreshToken;
+      delete result.refreshToken;
+    }
+    res.status(200).json(result);
   } catch (err: unknown) {
     const e = err as Error & { status?: number; code?: string };
     const status = e.status || 500;
     const code = e.code || (status === 401 ? "UNAUTHORIZED" : status === 400 ? "BAD_REQUEST" : "INTERNAL_ERROR");
-    console.error(`[ROUTE] login failed status=${status} code=${e.code} message=${e.message}`);
     res.status(status).json({ error: { code, message: e.message } });
   }
 });
