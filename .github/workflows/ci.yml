@@ -185,7 +185,7 @@ jobs:
           PGPASSWORD: bta_app_password
         run: |
           psql -h localhost -U bta_app -d bta_test -c "SELECT count(*) FROM users;" 2>&1 || echo "bta_app cannot query users table"
-      - name: Run E2E & True Golden Path Tests
+      - name: Run E2E Tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
@@ -203,6 +203,22 @@ jobs:
         run: |
           cd apps/api
           npx vitest run tests/e2e/
+      - name: Run True Golden Path Tests (local Express app with real DB)
+        env:
+          DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
+          DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
+          STORAGE_BACKEND: postgres
+          S3_ENDPOINT: http://localhost:9000
+          S3_REGION: us-east-1
+          S3_BUCKET: bta-storage-test
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_FORCE_PATH_STYLE: "true"
+          PARSER_SANDBOX_URL: http://localhost:8080/parse
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_PROVIDER: gemini
+        run: |
+          cd apps/api
           npx vitest run tests/goldenPath.e2e.test.ts
       - name: Dump API container logs (debug)
         if: always()
