@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -100,6 +101,10 @@ jobs:
           GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;
           GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;
           SQL
+      - name: Seed deterministic relational fixtures
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -f docker/seed-test-db.sql
       - name: Create MinIO bucket
         run: |
           set -euo pipefail
@@ -166,13 +171,14 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
-      - name: Re-apply runtime grants
+      - name: Re-apply runtime grants and seed fixtures
         env:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -f docker/seed-test-db.sql
       - name: Run E2E suites
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
@@ -244,6 +250,10 @@ jobs:
           GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;
           GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;
           SQL
+      - name: Seed deterministic relational fixtures
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -f docker/seed-test-db.sql
       - name: Load and DR tests
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
@@ -279,6 +289,8 @@ jobs:
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bta_app;"
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bta_app;"
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -c "SELECT rolname FROM pg_roles WHERE rolname='bta_app' AND rolsuper=false AND rolbypassrls=false;" | grep bta_app
+          cd ../..
+          psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 -f docker/seed-test-db.sql
       - name: Strict release verification
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
