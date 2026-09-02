@@ -41,10 +41,15 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
     try {
       const user = await productionUserByEmail(req.email, req.orgId);
       console.error(`[LOGIN] productionUserByEmail returned user=${user ? 'found' : 'null'} passwordHash=${user?.passwordHash ? 'exists' : 'missing'}`);
-      if (user && user.passwordHash && await bcrypt.compare(req.password, user.passwordHash)) {
-        authResult = issue(user, createRefreshToken(user.id).token);
+      if (user && user.passwordHash) {
+        console.error(`[LOGIN] calling bcrypt.compare`);
+        const pwMatch = await bcrypt.compare(req.password, user.passwordHash);
+        console.error(`[LOGIN] bcrypt.compare result=${pwMatch}`);
+        if (pwMatch) {
+          authResult = issue(user, createRefreshToken(user.id).token);
+        }
       }
-    } catch { /* fallback to seed */ }
+    } catch (e) { console.error(`[LOGIN] try block threw`, e); }
   }
   if (!authResult) {
     const user = findUserByEmail(req.email, req.orgId);
