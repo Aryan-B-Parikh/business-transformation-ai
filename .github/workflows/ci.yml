@@ -60,7 +60,7 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadmin
         ports: [9000:9000]
         options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-cmd "wget -qO- http://localhost:9000/minio/health/live || exit 1"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
@@ -123,12 +123,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Dependency Security Audit (strict — high for prod, allowlist pptxgenjs image-size GHSA-w3rx-r6r6-pgpr)
+      - name: Dependency Security Audit (strict — high for prod, allowlist pptxgenjs image-size)
         run: |
           echo "Running npm audit high for prod workspaces (shared, api, web)..."
-          npm audit --audit-level=high --workspace=@bta/api --workspace=@bta/shared --workspace=@bta/web --workspaces=false || (
+          npm audit --audit-level=high --workspace=@bta/api --workspace=@bta/shared --workspace=@bta/web || (
             echo "::warning::High audit findings — checking if any are critical beyond allowlisted image-size..."
-            npm audit --audit-level=critical --workspace=@bta/api --workspace=@bta/shared --workspace=@bta/web --workspaces=false
+            npm audit --audit-level=critical --workspace=@bta/api --workspace=@bta/shared --workspace=@bta/web
           )
       - name: Dependency review
         if: github.event_name == 'pull_request'
