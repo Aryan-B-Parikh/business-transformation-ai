@@ -156,6 +156,8 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
+      - name: "Build API image (no cache)"
+        run: docker compose -f docker-compose.test.yml build --no-cache api
       - name: "Start Infrastructure (deterministic: postgres -> minio -> bucket -> parser -> api -> worker)"
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

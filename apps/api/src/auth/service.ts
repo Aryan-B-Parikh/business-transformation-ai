@@ -24,6 +24,7 @@ async function productionUserByEmail(email: string, orgId: string): Promise<User
 }
 
 export async function login(req: LoginRequest): Promise<AuthResult> {
+  console.error(`[AUTH-DEBUG-ENTRY] login called email=${req.email} orgId=${req.orgId} NODE_ENV=${process.env.NODE_ENV}`);
   if (!req.email || !req.password) throw authError("email and password required", 400, "BAD_REQUEST");
   if (process.env.NODE_ENV === "production") {
     if (!req.orgId) throw authError("orgId is required for tenant-scoped authentication", 400, "ORG_ID_REQUIRED");
