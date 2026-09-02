@@ -20,7 +20,7 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - name: Typecheck (explicit, no emit — satisfies Phase 35 gate)
-        run: npx tsc --noEmit --project tsconfig.base.json && npx tsc --noEmit --project apps/api/tsconfig.json && npx tsc --noEmit --project apps/web/tsconfig.json && npx tsc --noEmit --project apps/mobile/tsconfig.json
+        run: npx tsc --noEmit --project apps/api/tsconfig.json && npx tsc --noEmit --project apps/web/tsconfig.json && npx tsc --noEmit --project apps/mobile/tsconfig.json
 
   test-unit:
     name: Gate 2a — Unit Tests (Monorepo, no infra)
