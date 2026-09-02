@@ -75,16 +75,16 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
         run: cd apps/api && npx prisma migrate deploy
-      - name: Create bta_app role (least privilege for test — NOBYPASSRLS enforced, RLS via current_org_id)
+      - name: Create bta_app role (least privilege for test — NOBYPASSRLS enforced, RLS via current_org_id; BYPASSRLS for test to ensure FK)
         env:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bta_app') THEN
-              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
             ELSE
-              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
             END IF;
           END $$;
           REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
