@@ -255,7 +255,7 @@ model Artifact {
   diagramUrl String? @map("diagram_url")
   version Int @default(1)
   parentArtifactId String? @map("parent_artifact_id") @db.Uuid
-  generatedBy GeneratedBy @map("generated_by")
+  generatedBy GeneratedBy @default(ai) @map("generated_by")
   createdBy String @map("created_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   sourceRevision Int? @map("source_revision")

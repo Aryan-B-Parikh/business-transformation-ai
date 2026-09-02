@@ -27,11 +27,12 @@ describe("Concurrency — artifact version optimistic locking", () => {
     const token = (await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain })).body.token;
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: "WS journey conc" });
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: "Proj journey conc" });
-    // Init to idea (version 1)
-    const init = await request(app).post(`/api/v1/projects/${proj.body.id}/journey/transition`).set("Authorization", `Bearer ${token}`).send({ stage: "discovery", status: "in_progress", version: 1 }).catch(() => null);
-    // Try two concurrent transitions from same version
+    // Init to idea (version 1) then discovery
+    await request(app).post(`/api/v1/projects/${proj.body.id}/journey/transition`).set("Authorization", `Bearer ${token}`).send({ stage: "idea", status: "in_progress" });
+    await request(app).post(`/api/v1/projects/${proj.body.id}/journey/transition`).set("Authorization", `Bearer ${token}`).send({ stage: "discovery", status: "in_progress", version: 1 });
+    // Try two concurrent transitions from same version (discovery -> business_analysis)
     const j = await request(app).get(`/api/v1/projects/${proj.body.id}/journey`).set("Authorization", `Bearer ${token}`);
-    const ver = (j.body.stages?.at(-1)?.stage_version ?? 1) as number;
+    const ver = (j.body.stages?.at(-1)?.stage_version ?? 2) as number;
     const [a, b] = await Promise.all([
       request(app).post(`/api/v1/projects/${proj.body.id}/journey/transition`).set("Authorization", `Bearer ${token}`).send({ stage: "business_analysis", status: "in_progress", version: ver }),
       request(app).post(`/api/v1/projects/${proj.body.id}/journey/transition`).set("Authorization", `Bearer ${token}`).send({ stage: "business_analysis", status: "in_progress", version: ver }),

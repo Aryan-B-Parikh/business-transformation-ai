@@ -29,7 +29,7 @@ export async function getOrgUsage(orgId: string): Promise<number> {
   if (process.env.DATABASE_URL) {
     try {
       const { prisma: p } = await import("../db/client");
-      const rows = await (p as any).$queryRawUnsafe('SELECT COALESCE(SUM("totalTokens"),0)::int as sum FROM "ai_usage_logs" WHERE "orgId" = $1 AND "createdAt" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
+      const rows = await (p as any).$queryRawUnsafe('SELECT COALESCE(SUM("total_tokens"),0)::int as sum FROM "ai_usage_logs" WHERE "org_id" = $1 AND "created_at" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
       return Number(rows[0]?.sum || 0);
     } catch (e) {
       if (process.env.NODE_ENV === "production") throw new Error(`Failed to fetch org usage (PostgreSQL authoritative): ${(e as Error).message}`);
@@ -58,8 +58,8 @@ export async function checkAndIncrementQuota(orgId?: string, orgPlan?: string, t
   if (requestId && process.env.DATABASE_URL) {
     try {
       const { prisma: p } = await import("../db/client");
-      const existing = await (p as any).$queryRawUnsafe('SELECT 1 FROM "ai_usage_logs" WHERE "orgId" = $1 AND "requestId" = $2 LIMIT 1', orgId, requestId) as unknown[];
-      if (existing.length > 0) return;
+      const existing = await (p as any).$queryRawUnsafe('SELECT 1 FROM "ai_usage_logs" WHERE "org_id" = $1 AND "request_id" = $2 LIMIT 1', orgId, requestId) as unknown[];
+      if (Array.isArray(existing) && existing.length > 0) return;
     } catch {
       // fall through to normal check
     }
@@ -69,7 +69,7 @@ export async function checkAndIncrementQuota(orgId?: string, orgPlan?: string, t
     // Serialize quota decision per org via advisory lock to prevent concurrent exceed
     await (p as any).$transaction(async (tx: { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown>; $queryRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown[]> }) => {
       await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', orgId);
-      const rows = await tx.$queryRawUnsafe('SELECT COALESCE(SUM("totalTokens"),0)::int as sum FROM "ai_usage_logs" WHERE "orgId" = $1 AND "createdAt" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
+      const rows = await tx.$queryRawUnsafe('SELECT COALESCE(SUM("total_tokens"),0)::int as sum FROM "ai_usage_logs" WHERE "org_id" = $1 AND "created_at" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
       const current = Number(rows[0]?.sum || 0);
       if (current + tokens > limit) {
         throw new QuotaExceededError(`Organization quota exceeded for plan ${orgPlan || "enterprise"}. Current monthly usage: ${current}, requested: ${tokens}, limit: ${limit}, billing period: ${new Date().toISOString().slice(0,7)}`);
@@ -103,10 +103,10 @@ export async function recordDurableUsage(orgId: string, model: string, promptTok
     await (appPrisma as unknown as { $transaction: (fn: (tx: unknown) => Promise<void>) => Promise<void> }).$transaction(async (tx: unknown) => {
       const p = tx as unknown as { $executeRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown>; $queryRawUnsafe: (q: string, ...a: unknown[]) => Promise<unknown[]>; aiUsageLog: { create: (o: unknown) => Promise<unknown> } };
       await p.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', orgId);
-      const existing = await p.$queryRawUnsafe('SELECT 1 FROM "ai_usage_logs" WHERE "orgId" = $1 AND "requestId" = $2 LIMIT 1', orgId, requestId) as unknown[];
-      if (existing.length > 0) return;
+      const existing = await p.$queryRawUnsafe('SELECT 1 FROM "ai_usage_logs" WHERE "org_id" = $1 AND "request_id" = $2 LIMIT 1', orgId, requestId) as unknown[];
+      if (Array.isArray(existing) && existing.length > 0) return;
       if (limit !== Infinity) {
-        const rows = await p.$queryRawUnsafe('SELECT COALESCE(SUM("totalTokens"),0)::int as sum FROM "ai_usage_logs" WHERE "orgId" = $1 AND "createdAt" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
+        const rows = await p.$queryRawUnsafe('SELECT COALESCE(SUM("total_tokens"),0)::int as sum FROM "ai_usage_logs" WHERE "org_id" = $1 AND "created_at" >= date_trunc(\'month\', now())', orgId) as Array<{ sum: number }>;
         const current = Number(rows[0]?.sum || 0);
         if (current + totalTokens > limit) {
           throw new QuotaExceededError(`Organization quota exceeded for plan ${orgPlan || "enterprise"}. Current monthly usage: ${current}, requested: ${totalTokens}, limit: ${limit}, billing period: ${new Date().toISOString().slice(0,7)}, pricingVersion: ${pricingVersion}`);
