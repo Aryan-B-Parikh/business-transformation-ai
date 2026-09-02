@@ -20,8 +20,8 @@ COPY apps/mobile ./apps/mobile
 # Generate Prisma client (npm install used --ignore-scripts)
 RUN cd apps/api && npx prisma generate
 
-# Build TypeScript (compiles to dist/)
-RUN npm run build
+# Build TypeScript for API only (compiles to dist/)
+RUN npm run build --workspace=@bta/api
 
 # Production stage
 FROM node:20-alpine3.18 AS runner
