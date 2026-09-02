@@ -40,6 +40,7 @@ export async function withTenant<T>(
   fn: (tx: unknown) => Promise<T>
 ): Promise<T> {
   const tenantId = assertTenant(orgId);
+  console.error(`[AUTH-DEBUG] withTenant start orgId=${tenantId}`);
   return prisma.$transaction<T>(async (tx: unknown) => {
     const p = tx as {
       $executeRawUnsafe?: (sql: string, ...values: unknown[]) => Promise<unknown>;
@@ -47,7 +48,9 @@ export async function withTenant<T>(
     if (typeof p.$executeRawUnsafe !== "function") {
       throw new Error("CRITICAL RLS VIOLATION: $executeRawUnsafe is not available to set tenant context. Transaction aborted.");
     }
+    console.error(`[AUTH-DEBUG] withTenant setting GUC orgId=${tenantId}`);
     await p.$executeRawUnsafe("SELECT set_config('app.current_org_id', $1, true)", tenantId);
+    console.error(`[AUTH-DEBUG] withTenant GUC set, calling fn`);
     return fn(tx);
   });
 }
