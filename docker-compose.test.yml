@@ -127,6 +127,7 @@ services:
       - JWT_ISSUER=${JWT_ISSUER:-bta-api}
       - JWT_AUDIENCE=${JWT_AUDIENCE:-bta-client}
       - WEBHOOK_SIGNING_SECRET=${WEBHOOK_SIGNING_SECRET:-a6867e27518510a4bdb45bfdec47a23d491e9ee635a002c8}
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
     ports:
       - "3000:3000"
     depends_on:
