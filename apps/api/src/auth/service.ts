@@ -49,8 +49,13 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
     console.error(`[AUTH-DEBUG] about to call productionUserByEmail email=${req.email} orgId=${req.orgId}`);
     try {
       const user = await productionUserByEmail(req.email, req.orgId);
-      if (user && user.passwordHash && await bcrypt.compare(req.password, user.passwordHash)) {
-        return issue(user, createRefreshToken(user.id).token);
+      console.error(`[AUTH-DEBUG] productionUserByEmail returned user=${user ? 'found' : 'null'} passwordHash=${user?.passwordHash ? 'exists' : 'missing'}`);
+      if (user && user.passwordHash) {
+        const pwMatch = await bcrypt.compare(req.password, user.passwordHash);
+        console.error(`[AUTH-DEBUG] bcrypt.compare result=${pwMatch}`);
+        if (pwMatch) {
+          return issue(user, createRefreshToken(user.id).token);
+        }
       }
       console.error(`[AUTH-DEBUG] DB lookup returned null or password mismatch for email=${req.email} orgId=${req.orgId} user=${JSON.stringify(user)}`);
     } catch (e) { console.error(`[AUTH-DEBUG] DB lookup threw for email=${req.email} orgId=${req.orgId}`, e); }
