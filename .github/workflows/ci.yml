@@ -82,9 +82,9 @@ jobs:
           psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bta_app') THEN
-              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
             ELSE
-              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
             END IF;
           END $$;
           REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
@@ -223,9 +223,9 @@ jobs:
           PGPASSWORD=postgres psql -h localhost -U postgres -d bta_test -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bta_app') THEN
-              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+              CREATE ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
             ELSE
-              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+              ALTER ROLE bta_app WITH LOGIN PASSWORD 'bta_app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
             END IF;
           END $$;
           REVOKE ALL PRIVILEGES ON DATABASE bta_test FROM bta_app;
