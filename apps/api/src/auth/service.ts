@@ -45,6 +45,7 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
     return issue(user, refreshToken);
   }
   // Test mode: try database first (for e2e tests with real DB), fallback to seed users
+  let authResult: AuthResult | null = null;
   if (req.orgId) {
     console.error(`[AUTH-DEBUG] about to call productionUserByEmail email=${req.email} orgId=${req.orgId}`);
     try {
@@ -54,24 +55,24 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
         const pwMatch = await bcrypt.compare(req.password, user.passwordHash);
         console.error(`[AUTH-DEBUG] bcrypt.compare result=${pwMatch}`);
         if (pwMatch) {
-          console.error(`[AUTH-DEBUG] About to return issue() token`);
-          try {
-            const result = issue(user, createRefreshToken(user.id).token);
-            console.error(`[AUTH-DEBUG] issue() returned successfully`);
-            return result;
-          } catch (e) {
-            console.error(`[AUTH-DEBUG] issue() threw`, e);
-            throw e;
-          }
+          console.error(`[AUTH-DEBUG] About to set authResult from issue()`);
+          authResult = issue(user, createRefreshToken(user.id).token);
+          console.error(`[AUTH-DEBUG] authResult set successfully`);
         }
       }
-      console.error(`[AUTH-DEBUG] DB lookup returned null or password mismatch for email=${req.email} orgId=${req.orgId} user=${JSON.stringify(user)}`);
+      if (!authResult) {
+        console.error(`[AUTH-DEBUG] DB lookup returned null or password mismatch for email=${req.email} orgId=${req.orgId} user=${JSON.stringify(user)}`);
+      }
     } catch (e) { console.error(`[AUTH-DEBUG] CATCH BLOCK TRIGGERED for email=${req.email} orgId=${req.orgId}`, e); }
   }
-  console.error(`[AUTH-DEBUG] Reached seed user fallback for email=${req.email} orgId=${req.orgId}`);
-  const user = findUserByEmail(req.email, req.orgId);
-  if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
-  return issue(user, createRefreshToken(user.id).token);
+  if (!authResult) {
+    console.error(`[AUTH-DEBUG] Reached seed user fallback for email=${req.email} orgId=${req.orgId}`);
+    const user = findUserByEmail(req.email, req.orgId);
+    if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+    authResult = issue(user, createRefreshToken(user.id).token);
+  }
+  console.error(`[AUTH-DEBUG] Returning authResult`);
+  return authResult!;
 }
 
 export async function ssoCallback(req: SsoCallbackRequest): Promise<AuthResult> {
