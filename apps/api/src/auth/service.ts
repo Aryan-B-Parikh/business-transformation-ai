@@ -55,7 +55,14 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
         console.error(`[AUTH-DEBUG] bcrypt.compare result=${pwMatch}`);
         if (pwMatch) {
           console.error(`[AUTH-DEBUG] About to return issue() token`);
-          return issue(user, createRefreshToken(user.id).token);
+          try {
+            const result = issue(user, createRefreshToken(user.id).token);
+            console.error(`[AUTH-DEBUG] issue() returned successfully`);
+            return result;
+          } catch (e) {
+            console.error(`[AUTH-DEBUG] issue() threw`, e);
+            throw e;
+          }
         }
       }
       console.error(`[AUTH-DEBUG] DB lookup returned null or password mismatch for email=${req.email} orgId=${req.orgId} user=${JSON.stringify(user)}`);
