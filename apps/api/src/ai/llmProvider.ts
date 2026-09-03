@@ -199,6 +199,7 @@ async function invokeGemini(systemPrompt: string, userPrompt: string, config: LL
     });
     if (!response.ok) throw new Error(`Gemini invocation failed: ${response.status} ${await response.text()}`);
     const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+    if (process.env.CI || process.env.VITEST) console.error(`[GEMINI-RESP] model=${model} candidates=${data.candidates?.length} firstText=${data.candidates?.[0]?.content?.parts?.[0]?.text?.substring(0, 100)}`);
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error("No content returned from Gemini");
     // Strip markdown fences if present
