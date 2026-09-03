@@ -17,7 +17,8 @@ function extractJwk(publicKeyPem: string, kid: string): Record<string, string> {
 }
 
 function loadKey(envPriv: string | undefined, kid: string): KeyPair {
-  if (!envPriv) {
+  const trimmed = envPriv?.trim();
+  if (!trimmed) {
     if (process.env.NODE_ENV === "production") {
       throw new Error(`Production JWT key is missing for kid=${kid}`);
     }
@@ -34,8 +35,8 @@ function loadKey(envPriv: string | undefined, kid: string): KeyPair {
     };
   }
 
-  const publicKey = crypto.createPublicKey(envPriv).export({ type: "spki", format: "pem" }) as string;
-  return { kid, privateKey: envPriv, publicKey, jwk: extractJwk(publicKey, kid) };
+  const publicKey = crypto.createPublicKey(trimmed).export({ type: "spki", format: "pem" }) as string;
+  return { kid, privateKey: trimmed, publicKey, jwk: extractJwk(publicKey, kid) };
 }
 
 export function initializeKeys(): void {

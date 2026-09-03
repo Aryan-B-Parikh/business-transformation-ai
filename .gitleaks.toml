@@ -1,0 +1,7 @@
+# gitleaks configuration — allowlist test JWT key in CI workflow
+title = "gitleaks config"
+
+[allowlist]
+description = "Allowlist test RSA key used in CI for JWT signing"
+regexes = ['''MIIEvQIBADANBgkqhkiG9w0BAQEFAASC''']
+paths = ['''\.github/workflows/ci\.yml$''']

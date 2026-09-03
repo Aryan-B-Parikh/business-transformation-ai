@@ -49,6 +49,7 @@ export function authenticate(req: AuthedRequest, res: Response, next: NextFuncti
     const code = e.code || "UNAUTHORIZED";
     const message = e.message || "Invalid token";
     const status = e.status || 401;
+    if (process.env.CI || process.env.VITEST) console.error(`[AUTH-REJECT] ${status} ${code}: ${message}`);
     res.status(status).json({ error: { code, message } });
   }
 }
