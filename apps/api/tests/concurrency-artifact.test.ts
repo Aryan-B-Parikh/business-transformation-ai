@@ -34,7 +34,10 @@ describe("Concurrency — artifact version optimistic locking", () => {
   beforeEach(() => resetRepositoriesForTests());
 
   it("optimistic locking: stale expectedVersion → 409, correct → 200", async () => {
-    const token = (await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain })).body.token;
+    const loginRes = await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain });
+    expect(loginRes.status, `login failed: ${JSON.stringify(loginRes.body)}`).toBe(200);
+    const token = loginRes.body.token;
+    expect(token, "login response missing token").toBeDefined();
     // Use admin token for workspace/project creation to ensure org exists (bypass RLS flakiness in CI)
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: "WS conc " + Date.now() });
     expect(ws.status).toBe(201);
@@ -52,7 +55,10 @@ describe("Concurrency — artifact version optimistic locking", () => {
   });
 
   it("journey concurrent transitions → one 200, one 409 (version mismatch)", async () => {
-    const token = (await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain })).body.token;
+    const loginRes = await request(app).post("/api/v1/auth/login").send({ email: "org_admin@org-a.com", password: plain });
+    expect(loginRes.status, `login failed: ${JSON.stringify(loginRes.body)}`).toBe(200);
+    const token = loginRes.body.token;
+    expect(token, "login response missing token").toBeDefined();
     const ws = await request(app).post("/api/v1/workspaces").set("Authorization", `Bearer ${token}`).send({ name: "WS journey conc " + Date.now() });
     expect(ws.status).toBe(201);
     const proj = await request(app).post(`/api/v1/workspaces/${ws.body.id}/projects`).set("Authorization", `Bearer ${token}`).send({ name: "Proj journey conc " + Date.now() });
