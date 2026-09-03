@@ -3,5 +3,5 @@ title = "gitleaks config"
 
 [allowlist]
 description = "Allowlist test RSA key used in CI for JWT signing"
-regexes = ['''MIIEvQIBADANBgkqhkiG9w0BAQEFAASC''']
+regexes = ['''MIIEvgIBADANBgkqhkiG9w0BAQEFAASC''']
 paths = ['''\.github/workflows/ci\.yml$''']
