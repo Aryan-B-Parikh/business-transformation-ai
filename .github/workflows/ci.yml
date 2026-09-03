@@ -184,7 +184,7 @@ jobs:
         run: node scripts/security-audit.cjs
       - name: Dependency review
         if: github.event_name == 'pull_request'
-        uses: dependency-review-action@v4
+        uses: actions/dependency-review-action@v4
       - name: Secret scan (strict, fails CI on any leak)
         uses: gitleaks/gitleaks-action@v2
         env:
