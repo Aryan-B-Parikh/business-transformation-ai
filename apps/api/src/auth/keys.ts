@@ -35,7 +35,8 @@ function loadKey(envPriv: string | undefined, kid: string): KeyPair {
     };
   }
 
-  const publicKey = crypto.createPublicKey(trimmed).export({ type: "spki", format: "pem" }) as string;
+  const privKeyObj = crypto.createPrivateKey(trimmed);
+  const publicKey = crypto.createPublicKey(privKeyObj).export({ type: "spki", format: "pem" }) as string;
   return { kid, privateKey: trimmed, publicKey, jwk: extractJwk(publicKey, kid) };
 }
 
@@ -46,7 +47,6 @@ export function initializeKeys(): void {
   }
 
   const primaryKid = process.env.JWT_KEY_ID || "primary-key-v1";
-  if (process.env.CI || process.env.VITEST) console.error(`[KEYS-INIT] kid="${primaryKid}", JWT_PRIVATE_KEY set=${!!process.env.JWT_PRIVATE_KEY}, len=${process.env.JWT_PRIVATE_KEY?.length}`);
   primaryKey = loadKey(process.env.JWT_PRIVATE_KEY, primaryKid);
 
   if (process.env.JWT_PREVIOUS_PRIVATE_KEY) {

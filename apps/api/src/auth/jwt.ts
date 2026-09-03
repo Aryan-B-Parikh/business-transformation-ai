@@ -38,7 +38,6 @@ export function signToken(payload: Omit<JwtPayload, "iat" | "exp">, expiresIn?: 
   if (!payload.role) throw new Error("role is required in JWT");
   if (!payload.userId) throw new Error("userId is required in JWT");
   const { key, kid } = getPrimaryPrivateKey();
-  if (process.env.CI || process.env.VITEST) console.error(`[JWT-SIGN] kid="${kid}", key starts="${key?.substring(0, 30)}"`);
   return jwt.sign(payload as object, key, {
     algorithm: "RS256",
     issuer: CANONICAL_ISSUER,
@@ -55,7 +54,6 @@ export function signToken(payload: Omit<JwtPayload, "iat" | "exp">, expiresIn?: 
 export function verifyToken(token: string): JwtPayload {
   try {
     const decodedUnverified = jwt.decode(token, { complete: true }) as unknown as { header: JwtHeader; payload: JwtPayload };
-    if (process.env.CI || process.env.VITEST) console.error(`[JWT-DEBUG] decoded header: ${JSON.stringify(decodedUnverified?.header)}, payload keys: ${decodedUnverified?.payload ? Object.keys(decodedUnverified.payload) : "null"}`);
     if (!decodedUnverified || !decodedUnverified.header || !decodedUnverified.header.kid) {
       throw new Error("Invalid token: missing kid");
     }
