@@ -178,11 +178,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: Dependency security audit (npm audit --audit-level=high)
+        run: npm audit --audit-level=high
       - name: Dependency security audit
         run: node scripts/security-audit.cjs
       - name: Dependency review
         if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v4
+        uses: dependency-review-action@v4
       - name: Secret scan (strict, fails CI on any leak)
         uses: gitleaks/gitleaks-action@v2
         env:
