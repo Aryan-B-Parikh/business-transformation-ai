@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import "./setup";
 import request from "supertest";
 import { PrismaClient } from "@prisma/client";
 import { createApp } from "../src/app";
