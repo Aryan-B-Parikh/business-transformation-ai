@@ -79,11 +79,13 @@ export async function refreshAccessToken(refreshTokenStr: string): Promise<AuthR
   const rt = findRefreshToken(refreshTokenStr); if (!rt || rt.revokedAt || rt.expiresAt <= new Date()) throw authError("Refresh token expired or revoked");
   // Try seed users first, then database
   let user = findUserById(rt.userId);
+  if (process.env.CI || process.env.VITEST) console.error(`[REFRESH-USER] rt.userId=${rt.userId} seedUser=${user ? user.id : "null"}`);
   if (!user) {
     try {
       const rows = await (prisma as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE id=$1::uuid LIMIT 1", rt.userId);
+      if (process.env.CI || process.env.VITEST) console.error(`[REFRESH-DB] userId=${rt.userId} rows.length=${rows.length}`);
       if (rows[0]) user = rows[0];
-    } catch { /* ignore */ }
+    } catch (e) { if (process.env.CI || process.env.VITEST) console.error(`[REFRESH-DB-ERROR] ${(e as Error).message}`); /* ignore */ }
   }
   if (!user) throw authError("User not found");
   revokeRefreshToken(rt.id); return issue(user, createRefreshToken(user.id).token);
