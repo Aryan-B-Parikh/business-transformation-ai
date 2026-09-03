@@ -119,7 +119,7 @@ jobs:
             mc mb --ignore-existing local/bta-storage-test &&
             mc anonymous set none local/bta-storage-test
           '
-- name: Run integration + PRD matrix + RLS (hermetic — no parser, parser tests are in E2E)
+      - name: Run integration + PRD matrix + RLS (hermetic — no parser, parser tests are in E2E)
         env:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
@@ -131,7 +131,35 @@ jobs:
           S3_SECRET_ACCESS_KEY: minioadmin
           S3_FORCE_PATH_STYLE: "true"
           PARSER_SANDBOX_URL: http://localhost:8080/parse
-          JWT_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr\nBVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT\n/fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX\nJpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass\ny/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga\nkiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz\nemxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/\nYHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy\n4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov\nU18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4\nymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc\n9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN\nNdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8\nvV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79\nXK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd\nMjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K\nkomRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY\ndDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm\nz0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE\nQweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI\nhLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT\nJbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO\nnHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9\nib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94\nFIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S\nVDZl5js6a20wxkP7TA1MjVI=\n-----END PRIVATE KEY-----"
+          JWT_PRIVATE_KEY: |
+            -----BEGIN PRIVATE KEY-----
+            MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr
+            BVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT
+            /fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX
+            JpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass
+            y/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga
+            kiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz
+            emxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/
+            YHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy
+            4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov
+            U18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4
+            ymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc
+            9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN
+            NdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8
+            vV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79
+            XK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd
+            MjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K
+            komRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY
+            dDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm
+            z0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE
+            QweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI
+            hLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT
+            JbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO
+            nHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9
+            ib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94
+            FIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S
+            VDZl5js6a20wxkP7TA1MjVI=
+            -----END PRIVATE KEY-----
           JWT_KEY_ID: "test-key-v1"
         run: |
           cd apps/api
@@ -216,7 +244,35 @@ jobs:
           API_URL: http://localhost:3000
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
-          JWT_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr\nBVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT\n/fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX\nJpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass\ny/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga\nkiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz\nemxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/\nYHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy\n4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov\nU18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4\nymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc\n9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN\nNdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8\nvV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79\nXK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd\nMjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K\nkomRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY\ndDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm\nz0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE\nQweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI\nhLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT\nJbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO\nnHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9\nib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94\nFIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S\nVDZl5js6a20wxkP7TA1MjVI=\n-----END PRIVATE KEY-----"
+          JWT_PRIVATE_KEY: |
+            -----BEGIN PRIVATE KEY-----
+            MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr
+            BVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT
+            /fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX
+            JpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass
+            y/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga
+            kiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz
+            emxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/
+            YHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy
+            4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov
+            U18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4
+            ymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc
+            9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN
+            NdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8
+            vV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79
+            XK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd
+            MjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K
+            komRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY
+            dDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm
+            z0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE
+            QweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI
+            hLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT
+            JbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO
+            nHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9
+            ib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94
+            FIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S
+            VDZl5js6a20wxkP7TA1MjVI=
+            -----END PRIVATE KEY-----
           JWT_KEY_ID: "test-key-v1"
         run: |
           cd apps/api
@@ -235,7 +291,35 @@ jobs:
           PARSER_SANDBOX_URL: http://localhost:8080/parse
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
-          JWT_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr\nBVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT\n/fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX\nJpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass\ny/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga\nkiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz\nemxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/\nYHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy\n4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov\nU18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4\nymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc\n9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN\nNdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8\nvV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79\nXK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd\nMjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K\nkomRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY\ndDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm\nz0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE\nQweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI\nhLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT\nJbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO\nnHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9\nib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94\nFIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S\nVDZl5js6a20wxkP7TA1MjVI=\n-----END PRIVATE KEY-----"
+          JWT_PRIVATE_KEY: |
+            -----BEGIN PRIVATE KEY-----
+            MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr
+            BVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT
+            /fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX
+            JpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass
+            y/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga
+            kiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz
+            emxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/
+            YHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy
+            4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov
+            U18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4
+            ymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc
+            9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN
+            NdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8
+            vV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79
+            XK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd
+            MjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K
+            komRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY
+            dDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm
+            z0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE
+            QweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI
+            hLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT
+            JbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO
+            nHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9
+            ib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94
+            FIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S
+            VDZl5js6a20wxkP7TA1MjVI=
+            -----END PRIVATE KEY-----
           JWT_KEY_ID: "test-key-v1"
         run: |
           cd apps/api
@@ -301,7 +385,35 @@ jobs:
           DATABASE_URL: postgresql://bta_app:bta_app_password@localhost:5432/bta_test?schema=public
           DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/bta_test?schema=public
           STORAGE_BACKEND: postgres
-          JWT_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr\nBVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT\n/fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX\nJpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass\ny/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga\nkiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz\nemxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/\nYHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy\n4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov\nU18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4\nymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc\n9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN\nNdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8\nvV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79\nXK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd\nMjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K\nkomRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY\ndDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm\nz0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE\nQweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI\nhLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT\nJbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO\nnHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9\nib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94\nFIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S\nVDZl5js6a20wxkP7TA1MjVI=\n-----END PRIVATE KEY-----"
+          JWT_PRIVATE_KEY: |
+            -----BEGIN PRIVATE KEY-----
+            MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr
+            BVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT
+            /fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX
+            JpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass
+            y/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga
+            kiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz
+            emxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/
+            YHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy
+            4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov
+            U18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4
+            ymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc
+            9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN
+            NdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8
+            vV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79
+            XK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd
+            MjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K
+            komRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY
+            dDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm
+            z0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE
+            QweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI
+            hLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT
+            JbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO
+            nHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9
+            ib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94
+            FIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S
+            VDZl5js6a20wxkP7TA1MjVI=
+            -----END PRIVATE KEY-----
           JWT_KEY_ID: "test-key-v1"
         run: |
           cd apps/api
@@ -340,7 +452,35 @@ jobs:
           S3_ENDPOINT: http://localhost:9000
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LLM_PROVIDER: gemini
-          JWT_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr\nBVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT\n/fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX\nJpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass\ny/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga\nkiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz\nemxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/\nYHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy\n4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov\nU18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4\nymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc\n9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN\nNdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8\nvV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79\nXK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd\nMjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K\nkomRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY\ndDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm\nz0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE\nQweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI\nhLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT\nJbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO\nnHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9\nib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94\nFIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S\nVDZl5js6a20wxkP7TA1MjVI=\n-----END PRIVATE KEY-----"
+          JWT_PRIVATE_KEY: |
+            -----BEGIN PRIVATE KEY-----
+            MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1HxBwH9qIXmr
+            BVUeAEYoDfL6ivmhZuWEONmlTD5PQFGqYN7cTnh9KHY7UWJJ7XwGtNaEos2GgLaT
+            /fU2fUEldvJRSbiF2B4a1N4TupL4volmf8jPPGEN622ak5dMrtLGOngskVFQk3kX
+            JpMnpbLrnYN7RTqGseImC2mR5RptrvC2ovD5HGiMq3qqSnql7wJYQzi4n5CDIass
+            y/WRtEhBf+xYmOiR7IS612aulHSBUnq5G96hTJ90GLg88phdvrFX69UrADxTT2ga
+            kiRQ72Q4GaZI7yWVjU423urOr8tKigBs0UxMRt9FThtsbedievbXwm6VjTh43waz
+            emxkeztDAgMBAAECggEABy7UIbNx++WyMc3/SENEnqKsFMUe90jaxzFUWw+kQ7p/
+            YHVCBfuNxPHW1OsSebnkumkCcBXSq3ygUIZCy+FR8UmCY5QyA5wntUlODBhCfGIy
+            4CybdU0Kw8XXc/fHMJX1Zo8o0gckBLmtl1joLnagjXOkRXoVRH4/rcZ5D07byuov
+            U18dJdoV2K2LYROJJ4LvwhP/fPo6Pwxi4nCxb3UcI3sm+g5J12KMH/kqZOuqSJI4
+            ymngkktdCevFiA9JYu7ebXlRklD9CJv0wzTSKhAsTgA6LBb2jej2v24pIfEwj/Dc
+            9kuwG3qQlYz/yDqHMeQ1pV9SgzQ9lK74+JAVECVruQKBgQD1bIXTyygmERhvF/DN
+            NdfsVIz3E1wXPce1pYiGsa5KmifUZS8sdfWGJd/vdcKR9MwmFTjndpitmecSRL/8
+            vV3U9eox3R7IqMKY//aRpYGaoSYi3P8SwCtsQ3lrwLCZoRaE9M6TxAxxwV+Jym79
+            XK+KeupvraQVjjVpDELQJgF3zwKBgQC2XS6dkpQqyx2GznIvXQdHIQmQj3r1G+Bd
+            MjEr48FsPwmrfPFhDt1QTBefkFJU2FjLCzBldPtkB6OU6PcCoRh+Q34HvRDN2t5K
+            komRhU9AlqdI0zb+4Teuw0JNjHRa38s1RN/T76AYblA3uhPPOoEF8v1j68Z0TvPY
+            dDa20w0uTQKBgQCZpGrTgGeODT3CrrYtgfu/E997/j60vhR8fzjNOgbm5ULyELZLm
+            z0t0iAzBQHd5ea4IKkTHofOhn7GTQvz6YkIfTs0JD3VWPEaX4O5Amf0qdX6FWgKE
+            QweJs+oyWTFiLdUXP3GPAGeZXSuCnEZZCDxDKofaBFE/VYqgWaCcIiSvAoGAddaI
+            hLFupKhTEATeq9RFG6UxdQQBw9ibhh0kwOOO3M9vBCzcHIdqYrSIn0a2rLSPy8QT
+            JbwNpXl6LoLK+hv2o8Ag9AcrkJlZAn7l/e5SY731oo05AEGvpXHuqgWUOhRaTrWO
+            nHg+zwqZMyk+G64GKT32llaICifqUXfm0wRVhBECgYEA7NYT7UJRZ42Fyuiv0sK9
+            ib+9kKhoM2Q8UcHVOAu9wqZndT59zMcsbv65sRiegY5s6nrskP4JcDrMOkjM+f94
+            FIVvDyTYdtNv5NIIWnKGTy7LbXDl/Qr+qOwRkNfNL+3rLmRayWxy+ALsIdE7l0+S
+            VDZl5js6a20wxkP7TA1MjVI=
+            -----END PRIVATE KEY-----
           JWT_KEY_ID: "test-key-v1"
         run: npx tsx scripts/verify-release-gate.ts --strict
       - name: Teardown
