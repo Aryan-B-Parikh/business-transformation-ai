@@ -39,14 +39,14 @@ export async function login(req: LoginRequest): Promise<AuthResult> {
     try {
       const user = await productionUserByEmail(req.email, req.orgId);
       if (user && user.passwordHash && await bcrypt.compare(req.password, user.passwordHash)) {
-        authResult = issue(user, createRefreshToken(user.id).token);
+        authResult = issue(user, createRefreshToken(user.id, user.orgId).token);
       }
     } catch { /* fallback to seed */ }
   }
   if (!authResult) {
     const user = findUserByEmail(req.email, req.orgId);
     if (!user || !(await verifyPassword(user, req.password))) throw authError("Invalid credentials", 401, "INVALID_CREDENTIALS");
-    authResult = issue(user, createRefreshToken(user.id).token);
+    authResult = issue(user, createRefreshToken(user.id, user.orgId).token);
   }
   return authResult!;
 }
@@ -59,7 +59,7 @@ export async function ssoCallback(req: SsoCallbackRequest): Promise<AuthResult> 
   if (!email) throw authError("code/email required", 400, "BAD_REQUEST");
   const user = findUserByEmail(email); if (!user) throw authError("SSO user not found");
   if (user.ssoProvider && user.ssoProvider !== req.provider) throw authError("SSO provider mismatch");
-  return issue(user, createRefreshToken(user.id).token);
+  return issue(user, createRefreshToken(user.id, user.orgId).token);
 }
 
 export async function refreshAccessToken(refreshTokenStr: string): Promise<AuthResult> {
@@ -77,18 +77,18 @@ export async function refreshAccessToken(refreshTokenStr: string): Promise<AuthR
     });
   }
   const rt = findRefreshToken(refreshTokenStr); if (!rt || rt.revokedAt || rt.expiresAt <= new Date()) throw authError("Refresh token expired or revoked");
-  // Try seed users first, then database
+  // Try seed users first, then database (use withTenant to set RLS context)
   let user = findUserById(rt.userId);
-  if (process.env.CI || process.env.VITEST) console.error(`[REFRESH-USER] rt.userId=${rt.userId} seedUser=${user ? user.id : "null"}`);
   if (!user) {
     try {
-      const rows = await (prisma as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE id=$1::uuid LIMIT 1", rt.userId);
-      if (process.env.CI || process.env.VITEST) console.error(`[REFRESH-DB] userId=${rt.userId} rows.length=${rows.length}`);
+      const rows = await withTenant(prisma as never, rt.orgId, async (tx: unknown) => {
+        return (tx as any).$queryRawUnsafe("SELECT id, org_id AS \"orgId\", email, name, role, password_hash AS \"passwordHash\", sso_provider AS \"ssoProvider\" FROM users WHERE id=$1::uuid LIMIT 1", rt.userId);
+      });
       if (rows[0]) user = rows[0];
-    } catch (e) { if (process.env.CI || process.env.VITEST) console.error(`[REFRESH-DB-ERROR] ${(e as Error).message}`); /* ignore */ }
+    } catch { /* ignore */ }
   }
   if (!user) throw authError("User not found");
-  revokeRefreshToken(rt.id); return issue(user, createRefreshToken(user.id).token);
+  revokeRefreshToken(rt.id); return issue(user, createRefreshToken(user.id, user.orgId).token);
 }
 
 export async function logout(refreshTokenStr: string): Promise<void> {
