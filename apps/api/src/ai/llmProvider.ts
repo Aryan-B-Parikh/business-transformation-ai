@@ -184,31 +184,47 @@ async function invokeGemini(systemPrompt: string, userPrompt: string, config: LL
   const model = normalizeGeminiModel(config.model || "gemini-1.5-flash");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 30000);
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const headers: Record<string, string> = { "Content-Type": "application/json", "x-goog-api-key": apiKey };
-    const combinedPrompt = `${systemPrompt}\n\n---\nUser:\n${userPrompt}\n\nReturn ONLY valid JSON per schema, no markdown.`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: combinedPrompt }] }],
-        generationConfig: { temperature: config.temperature ?? 0.2, maxOutputTokens: config.maxTokens ?? 2000, responseMimeType: "application/json" }
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`Gemini invocation failed: ${response.status} ${await response.text()}`);
-    const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
-    if (process.env.CI || process.env.VITEST) console.error(`[GEMINI-RESP] model=${model} response=${JSON.stringify(data).substring(0, 500)}`);
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("No content returned from Gemini");
-    // Strip markdown fences if present
-    const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    return { content: cleaned, promptTokens: data.usageMetadata?.promptTokenCount, completionTokens: data.usageMetadata?.candidatesTokenCount };
-  } catch (err) {
-    if ((err as Error)?.name === "AbortError") throw new LLMTimeoutError(`Gemini request timed out after ${config.timeoutMs ?? 30000}ms`);
-    throw err;
-  } finally { clearTimeout(timeout); }
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const headers: Record<string, string> = { "Content-Type": "application/json", "x-goog-api-key": apiKey };
+      const combinedPrompt = `${systemPrompt}\n\n---\nUser:\n${userPrompt}\n\nReturn ONLY valid JSON per schema, no markdown.`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: combinedPrompt }] }],
+          generationConfig: { temperature: config.temperature ?? 0.2, maxOutputTokens: config.maxTokens ?? 2000, responseMimeType: "application/json" }
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        if (process.env.CI || process.env.VITEST) console.error(`[GEMINI-ERR] attempt=${attempt} status=${response.status} body=${errText.substring(0, 300)}`);
+        lastError = new Error(`Gemini invocation failed: ${response.status} ${errText}`);
+        if (response.status >= 400 && response.status < 500) throw lastError; // don't retry client errors
+        continue;
+      }
+      const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+      if (process.env.CI || process.env.VITEST) console.error(`[GEMINI-RESP] attempt=${attempt} model=${model} hasCandidates=${!!data.candidates} candidatesLen=${data.candidates?.length} responseKeys=${Object.keys(data).join(",")}`);
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        return { content: cleaned, promptTokens: data.usageMetadata?.promptTokenCount, completionTokens: data.usageMetadata?.candidatesTokenCount };
+      }
+      if (process.env.CI || process.env.VITEST) console.error(`[GEMINI-EMPTY] attempt=${attempt} model=${model}`);
+      lastError = new Error("No content returned from Gemini");
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") throw new LLMTimeoutError(`Gemini request timed out after ${config.timeoutMs ?? 30000}ms`);
+      if (lastError && err === lastError) throw err; // re-throw client errors
+      lastError = err as Error;
+    }
+    // Wait before retry
+    await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+  }
+  clearTimeout(timeout);
+  throw lastError || new Error("No content returned from Gemini after retries");
 }
 
 export const Internal = {
