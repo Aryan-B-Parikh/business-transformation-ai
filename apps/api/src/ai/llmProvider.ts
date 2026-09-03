@@ -172,11 +172,12 @@ function getGeminiKey(): string | undefined {
   return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 }
 function normalizeGeminiModel(model: string): string {
-  if (!model || model.includes("gpt")) return "gemini-3.6-flash";
-  if (model === "gemini-3.7-flash" || model === "gemini-3.7" || model.includes("3.7")) return "gemini-3.6-flash";
-  if (model === "gemini-2.5-flash" || model.includes("2.5")) return "gemini-3.6-flash";
+  if (!model || model.includes("gpt")) return "gemini-1.5-flash";
+  if (model === "gemini-3.7-flash" || model === "gemini-3.7" || model.includes("3.7")) return "gemini-1.5-flash";
+  if (model === "gemini-2.5-flash" || model.includes("2.5")) return "gemini-1.5-flash";
+  if (model === "gemini-3.6-flash") return "gemini-1.5-flash";
   if (model.startsWith("gemini-")) return model;
-  return "gemini-3.6-flash";
+  return "gemini-1.5-flash";
 }
 async function invokeGemini(systemPrompt: string, userPrompt: string, config: LLMConfig): Promise<Invocation> {
   const apiKey = getGeminiKey()!;

@@ -151,7 +151,6 @@ router.post(
       const artifact = await getRepositories().artifacts.findById(orgId, result.artifactId);
       res.status(201).json(artifact);
     } catch (e) {
-      if (process.env.CI || process.env.VITEST) console.error(`[ARTIFACT-GEN-ERROR] type=${type} error=${(e as Error).message} stack=${(e as Error).stack?.substring(0, 500)}`);
       res.status(500).json({ error: { code: "INTERNAL_ERROR", message: (e as Error).message } });
     }
   }
